@@ -1,1 +1,12 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+tfplan
+tfplan.binary
+
+# Secrets
 *.tfvars
+*.tfvars.json
+secrets.tfvars
