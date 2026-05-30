@@ -1,12 +1,14 @@
-.PHONY: deploy plan destroy
+TF_DIR := infrastructure
+
+.PHONY: plan deploy destroy
 
 plan:
-	terraform plan
+	terraform -chdir=$(TF_DIR) plan
 
 deploy:
-	terraform apply -auto-approve
-	ansible-playbook -i inventory.ini site.yml # Ensure this triggers only after
-Terraform completes
+	terraform -chdir=$(TF_DIR) apply -auto-approve
+	# Add your ansible trigger here, ensuring it points to your inventory
+	# ansible-playbook -i ../ansible/inventory.ini ../ansible/site.yml
 
 destroy:
-	terraform destroy -auto-approve
+	terraform -chdir=$(TF_DIR) destroy -auto-approve
