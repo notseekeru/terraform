@@ -18,6 +18,6 @@ variable "region" {
 
 variable "droplet_size" {
   type        = string
-  default     = "s-1vcpu-1gb-10gb"
+  default     = "s-1vcpu-1gb"
   description = "Droplet hardware size (slug)"
 }

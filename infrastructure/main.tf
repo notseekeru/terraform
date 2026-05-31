@@ -15,7 +15,7 @@ resource "digitalocean_droplet" "main" {
 }
 
 resource "local_file" "ansible_inventory" {
-    filename = "${path.module}/../ansible/inventories/droplets.ini"
+    filename = "${path.module}/../../ansible/inventories/droplets.ini"
     content  = templatefile("${path.module}/inventory.tmpl", {
       droplet_ip = digitalocean_droplet.main.ipv4_address
     })
