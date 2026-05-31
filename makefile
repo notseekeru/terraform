@@ -1,6 +1,6 @@
 TF_DIR := infrastructure
 
-.PHONY: init plan plan-out apply-plan deploy destroy
+.PHONY: init plan out apply deploy destroy
 
 init:
 	terraform -chdir=$(TF_DIR) init
