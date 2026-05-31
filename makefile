@@ -8,10 +8,10 @@ init:
 plan:
 	terraform -chdir=$(TF_DIR) plan -var-file=../secrets.tfvars
 
-plan-out:
+out:
 	terraform -chdir=$(TF_DIR) plan -var-file=../secrets.tfvars -out=tfplan
 
-apply-plan:
+apply:
 	terraform -chdir=$(TF_DIR) apply tfplan
 
 deploy:
