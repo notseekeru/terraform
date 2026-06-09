@@ -1,7 +1,8 @@
-# Create and register your SSH key
+# Create and register SSH keys
 resource "digitalocean_ssh_key" "vm_key" {
-  name       = "vm-ssh-key"
-  public_key = var.ssh_public_key
+  for_each   = var.ssh_public_keys
+  name       = each.key
+  public_key = each.value
 }
 
 resource "digitalocean_droplet" "main" {
@@ -9,7 +10,7 @@ resource "digitalocean_droplet" "main" {
   name     = "vm-main-server"
   region   = var.region
   size     = var.droplet_size
-  ssh_keys = [digitalocean_ssh_key.vm_key.id]
+  ssh_keys = [for k in digitalocean_ssh_key.vm_key : k.id]
 
   tags = ["vm", "main-server"]
 }
