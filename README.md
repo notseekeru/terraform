@@ -2,11 +2,13 @@
 
 This repository contains Terraform code for provisioning infrastructure on my personal cloud. It includes modules for setting up virtual machines, networking, and other resources.
 
+Currently, the code is designed to work with DigitalOcean, but it can be adapted for other cloud providers with some modifications. The main goal is to automate the deployment and management of my personal cloud infrastructure using Terraform.
+
 ## Requirements
 
 - Terraform 1.0 or higher
 - A DigitalOcean API token set in the `DIGITALOCEAN_TOKEN` environment variable
-- An SSH key added to your DigitalOcean account for accessing the provisioned virtual machines
+- An SSH key (or multiple keys) added to your DigitalOcean account for accessing the provisioned virtual machines
 
 ## Usage
 
