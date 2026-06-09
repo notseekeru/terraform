@@ -7,7 +7,6 @@ variable "do_token" {
 variable "ssh_public_keys" {
   type        = map(string)
   description = "Map of SSH public key names to their public key strings for Droplet access"
-  sensitive   = true
 }
 
 variable "region" {
