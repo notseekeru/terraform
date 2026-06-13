@@ -1,6 +1,6 @@
 TF_DIR := infrastructure
 
-.PHONY: init plan out apply deploy destroy
+.PHONY: init plan out apply deploy destroy fmt validate
 
 init:
 	terraform -chdir=$(TF_DIR) init
@@ -19,3 +19,9 @@ deploy:
 
 destroy:
 	terraform -chdir=$(TF_DIR) destroy -auto-approve -var-file=../secrets.tfvars
+
+fmt:
+	terraform -chdir=$(TF_DIR) fmt
+
+validate:
+	terraform -chdir=$(TF_DIR) validate
