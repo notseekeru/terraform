@@ -25,16 +25,19 @@
 ```mermaid
 graph TD
     A[DigitalOcean API Token] --> B[Terraform]
-    B --> C["digitalocean_droplet.main<br/>Debian 13 · s-1vcpu-1gb · sgp1"]
-    B --> D["digitalocean_ssh_key.vm_key[*]"]
-    C --> E["local_file.ansible_inventory<br/>→ ansible/inventories/droplets.ini"]
-    D --> C
-
+    B --> D["digitalocean_ssh_key.this[*]"]
+    subgraph S["for_each over var.servers"]
+        C1["digitalocean_droplet.this[''vm-main-server'']"]
+        C2["digitalocean_droplet.this[''vm-...'']"]
+    end
+    D --> C1
+    D --> C2
+    C1 & C2 --> E["local_file.ansible_inventory<br/>→ ansible/inventories/droplets.ini"]
 ```
 
-- Single Droplet (`vm-main-server`) in `sgp1` region running Debian 13.
-- SSH keys registered with the Droplet at creation time.
-- Ansible inventory file generated automatically after `apply`.
+- **N Droplets** — one per entry in `var.servers`, each with per-server image/region/size/tags.
+- SSH keys registered at provision time, shared by all Droplets.
+- Ansible inventory generated automatically with per-tag host groups.
 
 ---
 
@@ -122,26 +125,52 @@ All plan/apply/destroy targets automatically pass `-var-file=../secrets.tfvars`.
 
 ## Variables
 
-| Name              | Type          | Default       | Description                            |
-| ----------------- | ------------- | ------------- | -------------------------------------- |
-| `do_token`        | `string`      | —             | DigitalOcean API Personal Access Token |
-| `ssh_public_keys` | `map(string)` | —             | SSH key name → public key value pairs  |
-| `region`          | `string`      | `sgp1`        | DigitalOcean region slug               |
-| `droplet_size`    | `string`      | `s-1vcpu-1gb` | Droplet size slug                      |
+| Name              | Type               | Default              | Description                                                     |
+| ----------------- | ------------------ | -------------------- | --------------------------------------------------------------- |
+| `do_token`        | `string`           | —                    | DigitalOcean API Personal Access Token                          |
+| `ssh_public_keys` | `map(string)`      | —                    | SSH key name → public key value pairs                           |
+| `default_region`  | `string`           | `sgp1`               | Default region (fallback for servers)                           |
+| `default_size`    | `string`           | `s-1vcpu-1gb`        | Default Droplet size (fallback for servers)                     |
+| `default_image`   | `string`           | `debian-13-x64`      | Default OS image (fallback for servers)                         |
+| `servers`         | `map(object({…}))` | `{ vm-main-server }` | Server definitions — see [Server config](#server-configuration) |
+
+### Server configuration
+
+Add servers by extending the `servers` map in `secrets.tfvars`:
+
+```hcl
+servers = {
+  "vm-main-server" = {
+    tags = ["main-server"]
+  }
+  "vm-worker-01" = {
+    region = "nyc1"
+    size   = "s-2vcpu-2gb"
+    tags   = ["worker", "web"]
+  }
+  "vm-db-01" = {
+    image  = "ubuntu-24-04-x64"
+    size   = "s-2vcpu-4gb"
+    tags   = ["database"]
+  }
+}
+```
+
+Each server key becomes the Droplet name. All fields are optional — missing values fall back to `default_region`, `default_size`, `default_image`.
 
 ---
 
 ## Outputs
 
-| Name          | Description                                |
-| ------------- | ------------------------------------------ |
-| `droplet_ip`  | Public IPv4 address of the main server     |
-| `droplet_urn` | Uniform Resource Name (URN) of the Droplet |
+| Name          | Description                                                      |
+| ------------- | ---------------------------------------------------------------- |
+| `droplets`    | Full map of all Droplets with IP, URN, region, size, image, tags |
+| `droplet_ips` | Quick lookup: server name → public IPv4                          |
 
 Retrieve after deploy:
 
 ```bash
-terraform -chdir=infrastructure output
+terraform -chdir=infrastructure output droplet_ips
 ```
 
 ---
@@ -151,14 +180,24 @@ terraform -chdir=infrastructure output
 After `apply`, Terraform generates `ansible/inventories/droplets.ini` from `infrastructure/inventory.tmpl`:
 
 ```ini
-[droplets]
-<droplet_ip> ansible_user=root
+[all:vars]
+ansible_user=root
+
+[all]
+vm-main-server ansible_host=203.0.113.1 region=sgp1 size=s-1vcpu-1gb image=debian-13-x64
+
+[tag_main-server]
+vm-main-server ansible_host=203.0.113.1
 ```
 
-You can then run playbooks directly:
+Servers are automatically grouped by tag (e.g. `[tag_web]`, `[tag_database]`), so you can target specific groups:
 
 ```bash
+# All servers
 ansible-playbook -i ansible/inventories/droplets.ini playbooks/site.yml
+
+# Only web workers
+ansible-playbook -i ansible/inventories/droplets.ini --limit tag_web playbooks/site.yml
 ```
 
 ---

@@ -1,9 +1,18 @@
-output "droplet_ip" {
-  value       = digitalocean_droplet.main.ipv4_address
-  description = "The public IPv4 address of your main server"
+output "droplets" {
+  value = {
+    for k, d in digitalocean_droplet.this : k => {
+      ipv4_address = d.ipv4_address
+      ipv6_address = d.ipv6_address
+      urn          = d.urn
+      region       = d.region
+      size         = d.size
+      image        = d.image
+      tags         = d.tags
+    }
+  }
 }
 
-output "droplet_urn" {
-  value       = digitalocean_droplet.main.urn
-  description = "The Uniform Resource Name for the Droplet"
+output "droplet_ips" {
+  value       = { for k, d in digitalocean_droplet.this : k => d.ipv4_address }
+  description = "Map of server name → public IPv4 address"
 }

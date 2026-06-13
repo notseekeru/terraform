@@ -1,22 +1,39 @@
 variable "do_token" {
   type        = string
-  description = "DigitalOcean API Personal Access Token"
   sensitive   = true
 }
 
 variable "ssh_public_keys" {
   type        = map(string)
-  description = "Map of SSH public key names to their public key strings for Droplet access"
 }
 
-variable "region" {
+variable "default_region" {
   type        = string
   default     = "sgp1"
-  description = "DigitalOcean region data center"
+  description = "Default DigitalOcean region for servers that don't specify one"
 }
 
-variable "droplet_size" {
+variable "default_size" {
   type        = string
   default     = "s-1vcpu-1gb"
-  description = "Droplet hardware size (slug)"
+}
+
+variable "default_image" {
+  type        = string
+  default     = "debian-13-x64"
+}
+
+variable "servers" {
+  type = map(object({
+    image  = optional(string)
+    region = optional(string)
+    size   = optional(string)
+    tags   = optional(list(string))
+  }))
+
+  default = {
+    "vm-main-server" = {
+      tags = ["vm", "main-server"]
+    }
+  }
 }

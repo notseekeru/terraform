@@ -1,2 +1,18 @@
-[droplets]
-${droplet_ip} ansible_user=root
+[all:vars]
+ansible_user=root
+
+[all]
+%{ for name, srv in servers ~}
+${name} ansible_host=${srv.ipv4_address} region=${srv.region} size=${srv.size} image=${srv.image}
+%{ endfor ~}
+
+# Per-tag groups (a server can appear in multiple groups)
+%{ for tag in distinct(flatten([for srv in servers : srv.tags])) ~}
+[tag_${tag}]
+%{ for name, srv in servers ~}
+%{ if contains(srv.tags, tag) ~}
+${name} ansible_host=${srv.ipv4_address}
+%{ endif ~}
+%{ endfor ~}
+
+%{ endfor ~}
