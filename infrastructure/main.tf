@@ -13,11 +13,18 @@ resource "digitalocean_droplet" "main" {
   ssh_keys = [for k in digitalocean_ssh_key.vm_key : k.id]
 
   tags = ["vm", "main-server"]
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "local_file" "ansible_inventory" {
-    filename = "${path.module}/../../ansible/inventories/droplets.ini"
-    content  = templatefile("${path.module}/inventory.tmpl", {
-      droplet_ip = digitalocean_droplet.main.ipv4_address
-    })
+  filename = "${path.module}/../../ansible/inventories/droplets.ini"
+  content = templatefile("${path.module}/inventory.tmpl", {
+    droplet_ip = digitalocean_droplet.main.ipv4_address
+  })
+  depends_on = [
+    digitalocean_droplet.main
+  ]
 }
