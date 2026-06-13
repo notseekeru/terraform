@@ -1,10 +1,10 @@
 variable "do_token" {
-  type        = string
-  sensitive   = true
+  type      = string
+  sensitive = true
 }
 
 variable "ssh_public_keys" {
-  type        = map(string)
+  type = map(string)
 }
 
 variable "default_region" {
@@ -14,13 +14,13 @@ variable "default_region" {
 }
 
 variable "default_size" {
-  type        = string
-  default     = "s-1vcpu-1gb"
+  type    = string
+  default = "s-1vcpu-1gb"
 }
 
 variable "default_image" {
-  type        = string
-  default     = "debian-13-x64"
+  type    = string
+  default = "debian-13-x64"
 }
 
 variable "servers" {
