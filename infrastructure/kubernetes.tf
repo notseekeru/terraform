@@ -1,6 +1,7 @@
 data "digitalocean_kubernetes_versions" "stable" {
-  version_prefix = "1.32." # Check the latest stable version via `doctl kubernetes options versions`
+  version_prefix = "1.34."
 }
+
 
 resource "digitalocean_kubernetes_cluster" "lab_cluster" {
   name    = "lab-cluster-01"

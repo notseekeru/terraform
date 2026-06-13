@@ -30,10 +30,4 @@ variable "servers" {
     size   = optional(string)
     tags   = optional(list(string))
   }))
-
-  default = {
-    "vm-main-server" = {
-      tags = ["vm", "main-server"]
-    }
-  }
 }
