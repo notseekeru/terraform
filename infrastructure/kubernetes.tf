@@ -1,7 +1,11 @@
+data "digitalocean_kubernetes_versions" "stable" {
+  version_prefix = "1.32." # Check the latest stable version via `doctl kubernetes options versions`
+}
+
 resource "digitalocean_kubernetes_cluster" "lab_cluster" {
   name    = "lab-cluster-01"
   region  = var.default_region
-  version = "latest" # DO will select the latest stable
+  version = data.digitalocean_kubernetes_versions.stable.latest_version
 
   node_pool {
     name       = "worker-pool"
