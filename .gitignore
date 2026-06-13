@@ -10,3 +10,6 @@ tfplan.binary
 *.tfvars
 *.tfvars.json
 secrets.tfvars
+
+# Kubernetes
+kubeconfig
