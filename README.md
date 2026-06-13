@@ -15,6 +15,7 @@
 - [Variables](#variables)
 - [Outputs](#outputs)
 - [Kubernetes Cluster](#kubernetes-cluster)
+- [Argo CD Bootstrap](#argo-cd-bootstrap)
 - [Ansible Integration](#ansible-integration)
 - [Security](#security)
 - [Cleanup](#cleanup)
@@ -219,6 +220,105 @@ kubectl get nodes
 ```
 
 > **Note:** DOKS may take several minutes to provision. Terraform will block until the control plane is ready.
+
+---
+
+## Argo CD Bootstrap
+
+Install Argo CD on the cluster and connect it to a GitHub repo for GitOps.
+
+### Prerequisites — argocd CLI
+
+```bash
+# Linux / WSL (AMD64) — latest stable
+curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+rm argocd-linux-amd64
+argocd version --client
+```
+
+### Install Argo CD on the cluster
+
+```bash
+kubectl create namespace argocd
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+```
+
+### Access the API server
+
+```bash
+# Port-forward (no LB needed for dev/lab)
+kubectl port-forward svc/argocd-server -n argocd 8443:443
+
+# Optional: patch to LoadBalancer for persistent access
+# kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
+```
+
+### Login & change password
+
+```bash
+# Retrieve initial password
+argocd admin initial-password -n argocd
+
+# Login via port-forward
+argocd login localhost:8443 --insecure
+
+# Change password immediately
+argocd account update-password
+```
+
+### GitHub repo bootstrap
+
+Connect Argo CD to a GitHub repository so it can sync manifests:
+
+```bash
+# Add a private GitHub repo (HTTPS + PAT)
+argocd repo add https://github.com/<org>/<repo>.git \
+  --username <your-github-username> \
+  --password <github-pat-or-token> \
+  --upsert
+
+# Or via SSH
+argocd repo add git@github.com:<org>/<repo>.git \
+  --ssh-private-key-path ~/.ssh/id_ed25519 \
+  --upsert
+```
+
+> **PAT scope** — The token needs at least `repo` scope for private repos.
+
+### Deploy the first app
+
+```bash
+argocd app create <app-name> \
+  --repo https://github.com/<org>/<repo>.git \
+  --path <manifests-dir> \
+  --dest-server https://kubernetes.default.svc \
+  --dest-namespace default \
+  --sync-policy automated
+```
+
+Or via declarative manifest (`argo-app.yaml`):
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: <app-name>
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/<org>/<repo>.git
+    path: <manifests-dir>
+    targetRevision: HEAD
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+```
 
 ---
 
