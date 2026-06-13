@@ -30,4 +30,8 @@ variable "servers" {
     size   = optional(string)
     tags   = optional(list(string))
   }))
+
+  default = {
+    # N/A
+  }
 }
