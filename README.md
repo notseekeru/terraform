@@ -97,7 +97,7 @@ terraform -chdir=infrastructure apply -auto-approve -var-file=../secrets.tfvars
 │       └── droplets.ini     # Generated Ansible inventory
 ├── secrets.tfvars           # ❗ Sensitive — do not commit
 ├── secrets.tfvars.example   # Safe template
-├── makefile                 # Convenience targets
+├── Makefile                 # Convenience targets
 └── README.md
 ```
 
@@ -105,16 +105,18 @@ terraform -chdir=infrastructure apply -auto-approve -var-file=../secrets.tfvars
 
 ## Makefile Workflow
 
-| Target         | Command                           | Description                    |
-| -------------- | --------------------------------- | ------------------------------ |
-| `make init`    | `terraform init`                  | Initialize providers & backend |
-| `make plan`    | `terraform plan`                  | Preview changes                |
-| `make out`     | `terraform plan -out=tfplan`      | Save plan to binary file       |
-| `make apply`   | `terraform apply tfplan`          | Apply saved plan               |
-| `make deploy`  | `terraform apply -auto-approve`   | Quick deploy (no plan review)  |
-| `make destroy` | `terraform destroy -auto-approve` | Tear down all resources        |
+| Target          | Command                           | Description                    |
+| --------------- | --------------------------------- | ------------------------------ |
+| `make init`     | `terraform init`                  | Initialize providers & backend |
+| `make plan`     | `terraform plan`                  | Preview changes                |
+| `make out`      | `terraform plan -out=tfplan`      | Save plan to binary file       |
+| `make apply`    | `terraform apply tfplan`          | Apply saved plan               |
+| `make deploy`   | `terraform apply -auto-approve`   | Quick deploy (no plan review)  |
+| `make destroy`  | `terraform destroy -auto-approve` | Tear down all resources        |
+| `make fmt`      | `terraform fmt`                   | Format all `.tf` files         |
+| `make validate` | `terraform validate`              | Validate configuration         |
 
-All targets automatically pass `-var-file=../secrets.tfvars`.
+All plan/apply/destroy targets automatically pass `-var-file=../secrets.tfvars`.
 
 ---
 
