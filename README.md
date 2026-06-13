@@ -14,6 +14,7 @@
 - [Makefile Workflow](#makefile-workflow)
 - [Variables](#variables)
 - [Outputs](#outputs)
+- [Kubernetes Cluster](#kubernetes-cluster)
 - [Ansible Integration](#ansible-integration)
 - [Security](#security)
 - [Cleanup](#cleanup)
@@ -172,6 +173,52 @@ Retrieve after deploy:
 ```bash
 terraform -chdir=infrastructure output droplet_ips
 ```
+
+---
+
+## Kubernetes Cluster
+
+| Attribute     | Value                | Notes                        |
+| ------------- | -------------------- | ---------------------------- |
+| **Name**      | `lab-cluster`        | Singleton — one cluster only |
+| **Region**    | `var.default_region` | Inherits `sgp1` default      |
+| **Version**   | `1.34.8-do.1`        | DO-managed Kubernetes        |
+| **Node pool** | 3 × `s-2vcpu-2gb`    | Worker-pool, 6 GB total      |
+
+### Prerequisites — kubectl
+
+```bash
+# No Package Manager + AMD64
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+chmod +x kubectl
+sudo mv kubectl /usr/local/bin/
+kubectl version --client
+```
+
+### Usage
+
+```bash
+# Temporary (current shell)
+export KUBECONFIG=$(pwd)/kubeconfig
+kubectl get nodes
+
+# Or pass inline every time
+kubectl --kubeconfig=./kubeconfig get pods -A
+
+# Or use direnv (persistent per directory)
+# echo 'export KUBECONFIG=$(pwd)/kubeconfig' >> .envrc && direnv allow
+```
+
+The cluster deploys alongside the Droplets in the same `terraform apply` run:
+
+```bash
+make deploy
+export KUBECONFIG=$(pwd)/kubeconfig
+kubectl cluster-info
+kubectl get nodes
+```
+
+> **Note:** DOKS may take several minutes to provision. Terraform will block until the control plane is ready.
 
 ---
 
