@@ -13,8 +13,8 @@
 - [Makefile Workflow](#makefile-workflow)
 - [Variables](#variables)
 - [Outputs](#outputs)
-- [Kubernetes Cluster](#kubernetes-cluster)
 - [Ansible Integration](#ansible-integration)
+- [Kubernetes Cluster](#kubernetes-cluster)
 - [Security](#security)
 - [Cleanup](#cleanup)
 
@@ -48,8 +48,6 @@ make init
 # 4. Preview
 make plan
 
-# 5. Deploy
-make deploy
 ```
 
 **Manual Terraform commands** (equivalent):
@@ -94,7 +92,6 @@ terraform -chdir=infrastructure apply -auto-approve -var-file=../secrets.tfvars
 | `make plan`     | `terraform plan`                  | Preview changes                |
 | `make out`      | `terraform plan -out=tfplan`      | Save plan to binary file       |
 | `make apply`    | `terraform apply tfplan`          | Apply saved plan               |
-| `make deploy`   | `terraform apply -auto-approve`   | Quick deploy (no plan review)  |
 | `make destroy`  | `terraform destroy -auto-approve` | Tear down all resources        |
 | `make fmt`      | `terraform fmt`                   | Format all `.tf` files         |
 | `make validate` | `terraform validate`              | Validate configuration         |
@@ -155,6 +152,33 @@ terraform -chdir=infrastructure output droplet_ips
 
 ---
 
+## Ansible Integration
+
+After `apply`, Terraform generates `ansible/inventories/droplets.ini` from `infrastructure/inventory.tmpl`:
+
+```ini
+[all:vars]
+ansible_user=root
+
+[all]
+vm-main-server ansible_host=203.0.113.1 region=sgp1 size=s-1vcpu-1gb image=debian-13-x64
+
+[tag_main-server]
+vm-main-server ansible_host=203.0.113.1
+```
+
+Servers are automatically grouped by tag (e.g. `[tag_web]`, `[tag_database]`), so you can target specific groups:
+
+```bash
+# All servers
+ansible-playbook -i ansible/inventories/droplets.ini playbooks/site.yml
+
+# Only web workers
+ansible-playbook -i ansible/inventories/droplets.ini --limit tag_web playbooks/site.yml
+```
+
+---
+
 ## Kubernetes Cluster
 
 | Attribute     | Value                | Notes                        |
@@ -194,17 +218,14 @@ kubectl --kubeconfig=./kubeconfig get pods -A
 The cluster deploys alongside the Droplets in the same `terraform apply` run:
 
 ```bash
-make deploy
+make out
+make apply
 export KUBECONFIG=$(pwd)/kubeconfig
 kubectl cluster-info
 kubectl get nodes
 ```
 
-> **Note:** DOKS may take several minutes to provision. Terraform will block until the control plane is ready.
-
 ---
-
-Install Argo CD on the cluster and connect it to a GitHub repo for GitOps.
 
 ### Prerequisites — argocd CLI
 
@@ -222,12 +243,14 @@ argocd version --client
 kubectl create namespace argocd
 kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 kubectl get pods -n argocd -w
+kubectl -n argocd get secret
 ```
 
 ### Access the API server
 
 ```bash
 # Port-forward (no LB needed for dev/lab)
+kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server
 kubectl port-forward svc/argocd-server -n argocd 8443:443
 ```
 
@@ -295,33 +318,6 @@ spec:
     automated:
       prune: true
       selfHeal: true
-```
-
----
-
-## Ansible Integration
-
-After `apply`, Terraform generates `ansible/inventories/droplets.ini` from `infrastructure/inventory.tmpl`:
-
-```ini
-[all:vars]
-ansible_user=root
-
-[all]
-vm-main-server ansible_host=203.0.113.1 region=sgp1 size=s-1vcpu-1gb image=debian-13-x64
-
-[tag_main-server]
-vm-main-server ansible_host=203.0.113.1
-```
-
-Servers are automatically grouped by tag (e.g. `[tag_web]`, `[tag_database]`), so you can target specific groups:
-
-```bash
-# All servers
-ansible-playbook -i ansible/inventories/droplets.ini playbooks/site.yml
-
-# Only web workers
-ansible-playbook -i ansible/inventories/droplets.ini --limit tag_web playbooks/site.yml
 ```
 
 ---

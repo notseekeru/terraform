@@ -14,9 +14,6 @@ out:
 apply:
 	terraform -chdir=$(TF_DIR) apply tfplan
 
-deploy:
-	terraform -chdir=$(TF_DIR) apply -auto-approve -var-file=../secrets.tfvars
-
 destroy:
 	terraform -chdir=$(TF_DIR) destroy -auto-approve -var-file=../secrets.tfvars
 
