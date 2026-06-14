@@ -120,16 +120,6 @@ servers = {
   "vm-main-server" = {
     tags = ["main-server"]
   }
-  "vm-worker-01" = {
-    region = "nyc1"
-    size   = "s-2vcpu-2gb"
-    tags   = ["worker", "web"]
-  }
-  "vm-db-01" = {
-    image  = "ubuntu-24-04-x64"
-    size   = "s-2vcpu-4gb"
-    tags   = ["database"]
-  }
 }
 ```
 
@@ -310,7 +300,7 @@ spec:
   source:
     repoURL: https://github.com/<org>/<repo>.git
     path: <manifests-dir>
-    targetRevision: HEAD
+    targetRevision: main
   destination:
     server: https://kubernetes.default.svc
     namespace: default
@@ -338,4 +328,10 @@ spec:
 make destroy
 ```
 
-This tears down all managed resources. The state file is **local** — delete `infrastructure/terraform.tfstate*` manually if you want a full reset.
+---
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+---
