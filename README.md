@@ -15,7 +15,6 @@
 - [Variables](#variables)
 - [Outputs](#outputs)
 - [Kubernetes Cluster](#kubernetes-cluster)
-- [Argo CD Bootstrap](#argo-cd-bootstrap)
 - [Ansible Integration](#ansible-integration)
 - [Security](#security)
 - [Cleanup](#cleanup)
@@ -45,12 +44,13 @@ graph TD
 
 ## Prerequisites
 
-| Requirement            | Details                                                                         |
-| ---------------------- | ------------------------------------------------------------------------------- |
-| **Terraform**          | `>= 1.0` ([install guide](https://developer.hashicorp.com/terraform/install))   |
-| **DigitalOcean Token** | Fine-grained PAT with write scope — see [Security](#security)                   |
-| **SSH Keys**           | Public keys uploaded to your DO account or provided inline via `secrets.tfvars` |
-| **Make**               | (Optional) `make` for the workflow targets below                                |
+| Requirement               | Details                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------- |
+| **Terraform**             | `>= 1.0` ([install guide](https://developer.hashicorp.com/terraform/install))   |
+| **DigitalOcean Token**    | Fine-grained PAT with write scope — see [Security](#security)                   |
+| **SSH Keys**              | Public keys uploaded to your DO account or provided inline via `secrets.tfvars` |
+| **Make**                  | (Optional) `make` for the workflow targets below                                |
+| **GitLeaks & pre-commit** | (Optional) For secret scanning and commit hygiene — see [Security](#security)   |
 
 ---
 
@@ -199,6 +199,9 @@ kubectl version --client
 ### Usage
 
 ```bash
+# Pre-commit
+pre-commit install
+
 # Temporary (current shell)
 export KUBECONFIG=$(pwd)/kubeconfig
 kubectl get nodes
@@ -222,8 +225,6 @@ kubectl get nodes
 > **Note:** DOKS may take several minutes to provision. Terraform will block until the control plane is ready.
 
 ---
-
-## Argo CD Bootstrap
 
 Install Argo CD on the cluster and connect it to a GitHub repo for GitOps.
 
@@ -250,9 +251,6 @@ kubectl get pods -n argocd -w
 ```bash
 # Port-forward (no LB needed for dev/lab)
 kubectl port-forward svc/argocd-server -n argocd 8443:443
-
-# Optional: patch to LoadBalancer for persistent access
-# kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
 ```
 
 ### Login & change password
@@ -356,6 +354,7 @@ ansible-playbook -i ansible/inventories/droplets.ini --limit tag_web playbooks/s
 - The DO token is consumed via `var.do_token` (marked `sensitive = true` in Terraform).
 - SSH keys are registered with the Droplet at provision time — no post-provision key injection required.
 - Consider using a vault or environment variables instead of plain-text `.tfvars` for production setups.
+- Consider using GitLeaks and pre-commit hooks to prevent accidental commits of secrets
 
 ---
 
