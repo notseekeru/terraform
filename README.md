@@ -7,7 +7,6 @@
 
 ## Table of Contents
 
-- [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
 - [Quickstart](#quickstart)
 - [Project Layout](#project-layout)
@@ -18,27 +17,6 @@
 - [Ansible Integration](#ansible-integration)
 - [Security](#security)
 - [Cleanup](#cleanup)
-
----
-
-## Architecture
-
-```mermaid
-graph TD
-    A[DigitalOcean API Token] --> B[Terraform]
-    B --> D["digitalocean_ssh_key.this[*]"]
-    subgraph S["for_each over var.servers"]
-        C1["digitalocean_droplet.this[''vm-main-server'']"]
-        C2["digitalocean_droplet.this[''vm-...'']"]
-    end
-    D --> C1
-    D --> C2
-    C1 & C2 --> E["local_file.ansible_inventory<br/>→ ansible/inventories/droplets.ini"]
-```
-
-- **N Droplets** — one per entry in `var.servers`, each with per-server image/region/size/tags.
-- SSH keys registered at provision time, shared by all Droplets.
-- Ansible inventory generated automatically with per-tag host groups.
 
 ---
 
