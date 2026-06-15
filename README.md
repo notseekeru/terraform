@@ -234,6 +234,7 @@ kubectl create namespace argocd
 kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 kubectl get pods -n argocd -w
 kubectl -n argocd get secret
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
 ```
 
 ### Access the API server
@@ -244,7 +245,7 @@ kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server
 kubectl port-forward svc/argocd-server -n argocd 8443:443
 ```
 
-### Login & change password
+### Login & change password (argoCD CLI)
 
 ```bash
 # Retrieve initial password
@@ -259,7 +260,9 @@ argocd account update-password
 
 ### GitHub repo bootstrap
 
-Connect Argo CD to a GitHub repository so it can sync manifests:
+> You can use any Git repository, but GitHub is common and has good integration with Argo CD. The repo should contain Kubernetes manifests (YAML files) organized in a directory structure. You can either use public repos or private ones but private repos require additional authentication setup.
+
+Connect Argo CD to a GitHub repository (if private) so it can sync manifests:
 
 ```bash
 # Add a private GitHub repo (HTTPS + PAT)
