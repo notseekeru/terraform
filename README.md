@@ -1,7 +1,7 @@
 # Terraform — Personal Cloud Infrastructure
 
 > Infrastructure-as-Code for my personal cloud environment.  
-> **Provider:** DigitalOcean · **Provisioner:** Terraform + Ansible
+> **Provider:** DigitalOcean · **Provisioner:** Terraform + Ansible (for vps)
 
 ---
 
