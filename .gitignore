@@ -13,3 +13,6 @@ secrets.tfvars
 
 # Kubernetes
 kubeconfig
+
+# Direnv
+.direnv
