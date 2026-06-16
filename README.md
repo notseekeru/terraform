@@ -191,7 +191,7 @@ kubectl version --client
 ### Usage
 
 ```bash
-# Pre-commit
+# Pre-commit (Optional)
 pre-commit install
 
 # Temporary (current shell)
@@ -234,7 +234,6 @@ kubectl create namespace argocd
 kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 kubectl get pods -n argocd -w
 kubectl -n argocd get secret
-kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
 ```
 
 ### Access the API server
@@ -287,10 +286,12 @@ argocd app create <app-name> \
   --path <manifests-dir> \
   --dest-server https://kubernetes.default.svc \
   --dest-namespace default \
-  --sync-policy automated
+  --sync-policy automated \
+  --auto-prune \
+  --self-heal
 ```
 
-Or via declarative manifest (`argo-app.yaml`):
+or via YAML manifest:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -312,6 +313,8 @@ spec:
       prune: true
       selfHeal: true
 ```
+
+then apply with `kubectl apply -f <app-manifest.yaml>`.
 
 ---
 
