@@ -276,19 +276,6 @@ argocd repo add "$(cat ./.github-repo.txt)" \
 
 ### Deploy the first app
 
-```bash
-argocd app create <app-name> \
-  --repo https://github.com/<org>/<repo>.git \
-  --path <manifests-dir> \
-  --dest-server https://kubernetes.default.svc \
-  --dest-namespace default \
-  --sync-policy automated \
-  --auto-prune \
-  --self-heal
-```
-
-or via YAML manifest:
-
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
