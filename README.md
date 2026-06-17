@@ -266,18 +266,13 @@ Connect Argo CD to a GitHub repository (if private) so it can sync manifests:
 
 ```bash
 # Add a private GitHub repo (HTTPS + PAT)
-argocd repo add "$(cat ./github-repo.txt)" \
-  --username "$(cat ./github-username.txt)" \
-  --password "$(cat ./github-pat.txt)" \
-  --upsert
-
-# Or via SSH
-argocd repo add git@github.com:<org>/<repo>.git \
-  --ssh-private-key-path ~/.ssh/id_ed25519 \
+argocd repo add "$(cat ./.github-repo.txt)" \
+  --username "$(cat ./.github-username.txt)" \
+  --password "$(cat ./.github-pat.txt)" \
   --upsert
 ```
 
-> **PAT scope** — The token needs at least `repo` scope for private repos.
+> **PAT scope** — The token needs at least `repo` scope for private repos. For public repos, no authentication is needed.
 
 ### Deploy the first app
 
@@ -321,13 +316,27 @@ then apply with `kubectl apply -f <app-manifest.yaml>`.
 
 ```bash
 # Create Kubernetes secret for Cloudflare Tunnel token
-kubectl create secret generic cloudflared-token --from-literal=token=<YOUR_CLOUDFLARE_TUNNEL_TOKEN>
+kubectl create secret generic cloudflared-token --from-literal=token=$(cat ./.cloudflare-token.txt)
 
 # Create Kubernetes secret for GitHub Container Registry (GHCR) authentication
 kubectl create secret docker-registry ghcr-login \
          --docker-server=ghcr.io \
-         --docker-username=$(cat ./github-username.txt) \
-         --docker-password=$(cat ./github-pat.txt)
+         --docker-username=$(cat ./.github-username.txt) \
+         --docker-password=$(cat ./.github-pat.txt)
+```
+
+### Extra Troubleshooting
+
+````bash
+# Check Argo CD application status
+argocd app get <app-name>
+# Check Argo CD server logs
+kubectl logs -n argocd -l app.kubernetes.io/name=argocd-server
+# Check Kubernetes events for the application namespace
+kubectl get events -n default
+
+kubectl logs -f deployment/ingress-nginx-controller -n ingress-nginx
+kubectl logs -f deployment/argocd-server -n argocd
 ```
 
 ---
@@ -346,7 +355,7 @@ kubectl create secret docker-registry ghcr-login \
 
 ```bash
 make destroy
-```
+````
 
 ---
 
