@@ -211,6 +211,7 @@ The cluster deploys alongside the Droplets in the same `terraform apply` run:
 make out
 make apply
 export KUBECONFIG=$(pwd)/kubeconfig
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/cloud/deploy.yaml
 kubectl cluster-info
 kubectl get nodes
 ```
@@ -233,7 +234,6 @@ argocd version --client
 kubectl create namespace argocd
 kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 kubectl get pods -n argocd -w
-kubectl -n argocd get secret
 ```
 
 ### Access the API server
@@ -242,6 +242,7 @@ kubectl -n argocd get secret
 # Port-forward (no LB needed for dev/lab)
 kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server
 kubectl port-forward svc/argocd-server -n argocd 8443:443
+export KUBECONFIG=$(pwd)/kubeconfig
 ```
 
 ### Login & change password (argoCD CLI)
@@ -265,9 +266,9 @@ Connect Argo CD to a GitHub repository (if private) so it can sync manifests:
 
 ```bash
 # Add a private GitHub repo (HTTPS + PAT)
-argocd repo add https://github.com/<org>/<repo>.git \
-  --username <your-github-username> \
-  --password <github-pat-or-token> \
+argocd repo add "$(cat ./github-repo.txt)" \
+  --username "$(cat ./github-username.txt)" \
+  --password "$(cat ./github-pat.txt)" \
   --upsert
 
 # Or via SSH
@@ -315,6 +316,19 @@ spec:
 ```
 
 then apply with `kubectl apply -f <app-manifest.yaml>`.
+
+### Secrets
+
+```bash
+# Create Kubernetes secret for Cloudflare Tunnel token
+kubectl create secret generic cloudflared-token --from-literal=token=<YOUR_CLOUDFLARE_TUNNEL_TOKEN>
+
+# Create Kubernetes secret for GitHub Container Registry (GHCR) authentication
+kubectl create secret docker-registry ghcr-login \
+         --docker-server=ghcr.io \
+         --docker-username=$(cat ./github-username.txt) \
+         --docker-password=$(cat ./github-pat.txt)
+```
 
 ---
 
