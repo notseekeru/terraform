@@ -11,6 +11,6 @@ resource "digitalocean_kubernetes_cluster" "lab_cluster" {
 }
 
 resource "local_file" "kubeconfig" {
-  filename = "${path.module}/../kubeconfig"
+  filename = "~/kubeconfig"
   content  = digitalocean_kubernetes_cluster.lab_cluster.kube_config.0.raw_config
 }
