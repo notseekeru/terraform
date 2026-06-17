@@ -10,6 +10,8 @@ tfplan.binary
 *.tfvars
 *.tfvars.json
 secrets.tfvars
+.cloudflare-token.txt
+.github-pat.txt
 
 # Kubernetes
 kubeconfig
