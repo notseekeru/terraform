@@ -35,3 +35,7 @@ variable "servers" {
     # N/A
   }
 }
+
+variable "cloudflare_tunnel_token" {
+  sensitive   = true
+}
