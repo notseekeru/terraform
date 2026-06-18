@@ -5,6 +5,9 @@ TF_DIR := infrastructure
 init:
 	terraform -chdir=$(TF_DIR) init
 
+upgradeinit:
+	terraform -chdir=$(TF_DIR) init -upgrade
+
 plan:
 	terraform -chdir=$(TF_DIR) plan -var-file=../secrets.tfvars
 
