@@ -38,7 +38,7 @@ resource "helm_release" "argocd" {
 }
 
 resource "kubernetes_manifest" "gitops_app" {
-  depends_on = [helm_release.argocd]  # wait for ArgoCD to be installed
+  depends_on = [helm_release.argocd]
 
   manifest = {
     apiVersion = "argoproj.io/v1alpha1"
@@ -116,7 +116,7 @@ resource "kubernetes_secret" "cloudflare_token" {
   }
 
   data = {
-    token = var.cloudflare_tunnel_token   # you must define this variable
+    token = var.cloudflare_tunnel_token
   }
 
   type = "Opaque"
