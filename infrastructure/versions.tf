@@ -1,6 +1,6 @@
 terraform {
   required_version = ">= 1.0"
-  
+
   required_providers {
     digitalocean = {
       source  = "digitalocean/digitalocean"
@@ -10,7 +10,7 @@ terraform {
       source  = "hashicorp/helm"
       version = "~> 2.0"
     }
-    kubernetes = {          # add this
+    kubernetes = {
       source  = "hashicorp/kubernetes"
       version = "~> 2.23"
     }
