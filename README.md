@@ -308,7 +308,7 @@ then apply with `kubectl apply -f <app-manifest.yaml>`.
 # Create Kubernetes secret for Cloudflare Tunnel token
 kubectl create secret generic cloudflared-token --from-literal=token=$(cat ./credentials/.cloudflare-token.txt)
 
-# Create Kubernetes secret for GitHub Container Registry (GHCR) authentication
+# Create Kubernetes secret for GitHub Pat with read:packages scope and read access to the repo
 kubectl create secret docker-registry ghcr-login \
          --docker-server=ghcr.io \
          --docker-username=$(cat ./credentials/.github-username.txt) \
