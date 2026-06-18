@@ -88,7 +88,7 @@ resource "kubernetes_manifest" "nginx_ingress" {
           values = <<-EOT
             controller:
               service:
-                type: LoadBalancer
+                type: clusterIP
           EOT
         }
       }
