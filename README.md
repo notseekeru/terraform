@@ -198,11 +198,14 @@ pre-commit install
 export KUBECONFIG=$(pwd)/kubeconfig
 kubectl get nodes
 
+# Or Permanent (user-level)
+echo 'export KUBECONFIG=$(pwd)/kubeconfig' >> ~/.bashrc && source ~/.bashrc # or ~/.zshrc for Zsh
+
 # Or pass inline every time
 kubectl --kubeconfig=./kubeconfig get pods -A
 
 # Or use direnv (persistent per directory)
-# echo 'export KUBECONFIG=$(pwd)/kubeconfig' >> .envrc && direnv allow
+echo 'export KUBECONFIG=$(pwd)/kubeconfig' >> .envrc && direnv allow
 ```
 
 The cluster deploys alongside the Droplets in the same `terraform apply` run:
@@ -266,9 +269,9 @@ Connect Argo CD to a GitHub repository (if private) so it can sync manifests:
 
 ```bash
 # Add a private GitHub repo (HTTPS + PAT)
-argocd repo add "$(cat ./.github-repo.txt)" \
-  --username "$(cat ./.github-username.txt)" \
-  --password "$(cat ./.github-pat.txt)" \
+argocd repo add "$(cat ./credentials/.github-repo.txt)" \
+  --username "$(cat ./credentials/.github-username.txt)" \
+  --password "$(cat ./credentials/.github-pat.txt)" \
   --upsert
 ```
 
@@ -303,13 +306,13 @@ then apply with `kubectl apply -f <app-manifest.yaml>`.
 
 ```bash
 # Create Kubernetes secret for Cloudflare Tunnel token
-kubectl create secret generic cloudflared-token --from-literal=token=$(cat ./.cloudflare-token.txt)
+kubectl create secret generic cloudflared-token --from-literal=token=$(cat ./credentials/.cloudflare-token.txt)
 
 # Create Kubernetes secret for GitHub Container Registry (GHCR) authentication
 kubectl create secret docker-registry ghcr-login \
          --docker-server=ghcr.io \
-         --docker-username=$(cat ./.github-username.txt) \
-         --docker-password=$(cat ./.github-pat.txt)
+         --docker-username=$(cat ./credentials/.github-username.txt) \
+         --docker-password=$(cat ./credentials/.github-pat.txt)
 ```
 
 ### Extra Troubleshooting
