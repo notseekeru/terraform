@@ -206,10 +206,10 @@ kubectl port-forward svc/argocd-server -n argocd 8443:443
 argocd admin initial-password -n argocd
 
 # Login via port-forward
-argocd login localhost:8443 --insecure
+argocd login localhost:8443 --grpc-web --insecure
 
 # Change password immediately
-argocd account update-password
+argocd account update-password --grpc-web
 ```
 
 ### GitHub repo bootstrap
