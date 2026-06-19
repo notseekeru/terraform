@@ -50,66 +50,24 @@ make plan
 
 ```
 
-**Manual Terraform commands** (equivalent):
-
-```bash
-terraform -chdir=infrastructure init
-terraform -chdir=infrastructure plan -var-file=../secrets.tfvars
-terraform -chdir=infrastructure apply -auto-approve -var-file=../secrets.tfvars
-```
-
----
-
-## Project Layout
-
-```
-.
-├── infrastructure/          # Terraform root module
-│   ├── main.tf              # Resources: Droplet, SSH keys, inventory file
-│   ├── provider.tf          # DigitalOcean provider config
-│   ├── variables.tf         # Input variable declarations
-│   ├── outputs.tf           # Output values (IP, URN)
-│   ├── versions.tf          # Provider version constraints
-│   ├── inventory.tmpl       # Ansible inventory template
-│   ├── terraform.tfstate    # State file (local)
-│   └── tfplan               # Binary plan output (generated)
-├── ansible/
-│   └── inventories/
-│       └── droplets.ini     # Generated Ansible inventory
-├── secrets.tfvars           # ❗ Sensitive — do not commit
-├── secrets.tfvars.example   # Safe template
-├── Makefile                 # Convenience targets
-└── README.md
-```
-
 ---
 
 ## Makefile Workflow
 
-| Target          | Command                           | Description                    |
-| --------------- | --------------------------------- | ------------------------------ |
-| `make init`     | `terraform init`                  | Initialize providers & backend |
-| `make plan`     | `terraform plan`                  | Preview changes                |
-| `make out`      | `terraform plan -out=tfplan`      | Save plan to binary file       |
-| `make apply`    | `terraform apply tfplan`          | Apply saved plan               |
-| `make destroy`  | `terraform destroy -auto-approve` | Tear down all resources        |
-| `make fmt`      | `terraform fmt`                   | Format all `.tf` files         |
-| `make validate` | `terraform validate`              | Validate configuration         |
+| Target             | Command                           | Description                    |
+| ------------------ | --------------------------------- | ------------------------------ |
+| `make init`        | `terraform init`                  | Initialize providers & backend |
+| `make upgradeinit` | `terraform init -upgrade`         | Upgrade initialization         |
+| `make plan`        | `terraform plan`                  | Preview changes                |
+| `make out`         | `terraform plan -out=tfplan`      | Save plan to binary file       |
+| `make apply`       | `terraform apply tfplan`          | Apply saved plan               |
+| `make destroy`     | `terraform destroy -auto-approve` | Tear down all resources        |
+| `make fmt`         | `terraform fmt`                   | Format all `.tf` files         |
+| `make validate`    | `terraform validate`              | Validate configuration         |
 
 All plan/apply/destroy targets automatically pass `-var-file=../secrets.tfvars`.
 
 ---
-
-## Variables
-
-| Name              | Type               | Default              | Description                                                     |
-| ----------------- | ------------------ | -------------------- | --------------------------------------------------------------- |
-| `do_token`        | `string`           | —                    | DigitalOcean API Personal Access Token                          |
-| `ssh_public_keys` | `map(string)`      | —                    | SSH key name → public key value pairs                           |
-| `default_region`  | `string`           | `sgp1`               | Default region (fallback for servers)                           |
-| `default_size`    | `string`           | `s-1vcpu-1gb`        | Default Droplet size (fallback for servers)                     |
-| `default_image`   | `string`           | `debian-13-x64`      | Default OS image (fallback for servers)                         |
-| `servers`         | `map(object({…}))` | `{ vm-main-server }` | Server definitions — see [Server config](#server-configuration) |
 
 ### Server configuration
 
@@ -127,7 +85,7 @@ Each server key becomes the Droplet name. All fields are optional — missing va
 
 ---
 
-## Outputs
+## Outputs for droplets
 
 | Name          | Description                                                      |
 | ------------- | ---------------------------------------------------------------- |
@@ -191,18 +149,13 @@ kubectl version --client
 ### Usage
 
 ```bash
-# Pre-commit (Optional)
-pre-commit install
-
 # Temporary (current shell)
 export KUBECONFIG=$(pwd)/kubeconfig
 kubectl get nodes
 
 # Or Permanent (user-level)
-echo 'export KUBECONFIG=$(pwd)/kubeconfig' >> ~/.bashrc && source ~/.bashrc # or ~/.zshrc for Zsh
-
-# Or pass inline every time
-kubectl --kubeconfig=./kubeconfig get pods -A
+echo 'export KUBECONFIG=$(pwd)/kubeconfig' >> ~/.bashrc && source ~/.bashrc # for bash
+echo 'export KUBECONFIG=$(pwd)/kubeconfig' >> ~/.zshrc && source ~/.zshrc # for zsh
 
 # Or use direnv (persistent per directory)
 echo 'export KUBECONFIG=$(pwd)/kubeconfig' >> .envrc && direnv allow
@@ -221,7 +174,7 @@ kubectl get nodes
 
 ---
 
-### Prerequisites — argocd CLI
+### ArgoCD CLI
 
 ```bash
 # Linux / WSL (AMD64) — latest stable
@@ -248,7 +201,7 @@ kubectl port-forward svc/argocd-server -n argocd 8443:443
 export KUBECONFIG=$(pwd)/kubeconfig
 ```
 
-### Login & change password (argoCD CLI)
+### Login & change password (ArgoCD CLI)
 
 ```bash
 # Retrieve initial password
