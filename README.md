@@ -150,12 +150,12 @@ kubectl version --client
 
 ```bash
 # Temporary (current shell)
-export KUBECONFIG=$(pwd)/kubeconfig
+export KUBECONFIG=~/kubeconfig
 kubectl get nodes
 
 # Or Permanent (user-level)
-echo 'export KUBECONFIG=$(pwd)/kubeconfig' >> ~/.bashrc && source ~/.bashrc # for bash
-echo 'export KUBECONFIG=$(pwd)/kubeconfig' >> ~/.zshrc && source ~/.zshrc # for zsh
+echo 'export KUBECONFIG=~/kubeconfig' >> ~/.bashrc && source ~/.bashrc # for bash
+echo 'export KUBECONFIG=~/kubeconfig' >> ~/.zshrc && source ~/.zshrc # for zsh
 
 # Or use direnv (persistent per directory)
 echo 'export KUBECONFIG=$(pwd)/kubeconfig' >> .envrc && direnv allow
@@ -166,7 +166,6 @@ The cluster deploys alongside the Droplets in the same `terraform apply` run:
 ```bash
 make out
 make apply
-export KUBECONFIG=$(pwd)/kubeconfig
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/cloud/deploy.yaml
 kubectl cluster-info
 kubectl get nodes
@@ -198,7 +197,6 @@ kubectl get pods -n argocd -w
 # Port-forward (no LB needed for dev/lab)
 kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server
 kubectl port-forward svc/argocd-server -n argocd 8443:443
-export KUBECONFIG=$(pwd)/kubeconfig
 ```
 
 ### Login & change password (ArgoCD CLI)
@@ -227,8 +225,6 @@ argocd repo add "$(cat ./credentials/.github-repo.txt)" \
   --password "$(cat ./credentials/.github-pat.txt)" \
   --upsert
 ```
-
-> **PAT scope** — The token needs at least `repo` scope for private repos. For public repos, no authentication is needed.
 
 ### Deploy the first app
 
@@ -270,7 +266,7 @@ kubectl create secret docker-registry ghcr-login \
 
 ### Extra Troubleshooting
 
-````bash
+```bash
 # Check Argo CD application status
 argocd app get <app-name>
 # Check Argo CD server logs
@@ -280,6 +276,9 @@ kubectl get events -n default
 
 kubectl logs -f deployment/ingress-nginx-controller -n ingress-nginx
 kubectl logs -f deployment/argocd-server -n argocd
+
+kubectl rollout restart deployment argocd-repo-server -n argocd
+kubectl rollout restart deployment argocd-server -n argocd
 ```
 
 ---
@@ -298,7 +297,7 @@ kubectl logs -f deployment/argocd-server -n argocd
 
 ```bash
 make destroy
-````
+```
 
 ---
 
