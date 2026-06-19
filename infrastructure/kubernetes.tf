@@ -32,6 +32,12 @@ provider "kubernetes" {
   cluster_ca_certificate = base64decode(digitalocean_kubernetes_cluster.lab_cluster.kube_config.0.cluster_ca_certificate)
 }
 
+provider "kubectl" {
+  host                   = digitalocean_kubernetes_cluster.lab_cluster.endpoint
+  token                  = digitalocean_kubernetes_cluster.lab_cluster.kube_config.0.token
+  cluster_ca_certificate = base64decode(digitalocean_kubernetes_cluster.lab_cluster.kube_config.0.cluster_ca_certificate)
+}
+
 # --- ArgoCD Installation ---
 
 resource "helm_release" "argocd" {
@@ -42,6 +48,33 @@ resource "helm_release" "argocd" {
   create_namespace = true
   version          = "7.7.0"                       # Pin a stable version
   depends_on       = [digitalocean_kubernetes_cluster.lab_cluster]
+}
+
+# --- Nginx Ingress Controller ---
+
+resource "helm_release" "ingress_nginx" {
+  name             = "ingress-nginx"
+  repository       = "https://kubernetes.github.io/ingress-nginx"
+  chart            = "ingress-nginx"
+  namespace        = "ingress-nginx"
+  create_namespace = true
+  depends_on       = [digitalocean_kubernetes_cluster.lab_cluster]
+
+  # Keep it internal (ClusterIP) - Cloudflare Tunnel will route to it via internal DNS
+  set {
+    name  = "controller.service.type"
+    value = "ClusterIP"
+  }
+
+  # Set resource limits to fit your s-2vcpu-2gb nodes
+  set {
+    name  = "controller.resources.requests.memory"
+    value = "128Mi"
+  }
+  set {
+    name  = "controller.resources.requests.cpu"
+    value = "100m"
+  }
 }
 
 # --- Secrets (created before ArgoCD syncs) ---
@@ -104,8 +137,11 @@ resource "kubernetes_secret" "argocd_repo_secret" {
 # --- ArgoCD Application (the only manifest we apply) ---
 
 resource "kubectl_manifest" "gitops_app" {
+  provider   = kubectl
   depends_on = [
+    digitalocean_kubernetes_cluster.lab_cluster,
     helm_release.argocd,
+    helm_release.ingress_nginx,
     kubernetes_secret.argocd_repo_secret,
     kubernetes_secret.cloudflare_tunnel_token,
     kubernetes_secret.ghcr_credentials
