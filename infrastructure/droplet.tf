@@ -5,7 +5,6 @@ variable "ssh_public_keys" {
 variable "default_region" {
   type        = string
   default     = "sgp1"
-  description = "Default DigitalOcean region for servers that don't specify one"
 }
 
 variable "default_size" {

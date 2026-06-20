@@ -1,5 +1,4 @@
 {
-  description = "Kubectl, Terraform, and ArgoCD";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
