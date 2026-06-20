@@ -214,8 +214,6 @@ argocd account update-password --grpc-web
 
 ### GitHub repo bootstrap
 
-> You can use any Git repository, but GitHub is common and has good integration with Argo CD. The repo should contain Kubernetes manifests (YAML files) organized in a directory structure. You can either use public repos or private ones but private repos require additional authentication setup.
-
 Connect Argo CD to a GitHub repository (if private) so it can sync manifests:
 
 ```bash
