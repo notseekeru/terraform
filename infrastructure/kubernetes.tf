@@ -150,3 +150,45 @@ resource "kubectl_manifest" "gitops_app" {
   ]
   yaml_body = file("${path.module}/../../gitops/app.yaml")
 }
+
+# --- Managed Database (PostgreSQL) ---
+
+resource "digitalocean_database_cluster" "crud_db" {
+  name       = "crud-db"
+  engine     = "pg"
+  version    = "16"
+  size       = "db-s-1vcpu-1gb"
+  region     = var.default_region
+  node_count = 1
+
+  private_network_uuid = digitalocean_kubernetes_cluster.lab_cluster.vpc_uuid
+}
+
+resource "digitalocean_database_db" "crud_database" {
+  cluster_id = digitalocean_database_cluster.crud_db.id
+  name       = "cruddb"
+}
+
+resource "digitalocean_database_user" "crud_user" {
+  cluster_id = digitalocean_database_cluster.crud_db.id
+  name       = "crudapp"
+}
+
+resource "kubernetes_secret" "db_credentials" {
+  depends_on = [digitalocean_kubernetes_cluster.lab_cluster]
+
+  metadata {
+    name      = "db-credentials"
+    namespace = "default"
+  }
+  data = {
+    database-url = format(
+      "postgresql://%s:%s@%s:25060/%s?sslmode=require",
+      digitalocean_database_user.crud_user.name,
+      digitalocean_database_user.crud_user.password,
+      digitalocean_database_cluster.crud_db.private_host,
+      digitalocean_database_db.crud_database.name,
+    )
+  }
+  type = "Opaque"
+}
