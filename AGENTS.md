@@ -11,6 +11,7 @@
 
 ## Mandate
 
+- Do not read Secrets, Credentials, Tokens.
 - Absorb the codebase first.
 - Ask the user before proceeding, Do not assume and do not Rush. Always avoid ambiguities, risks, and assumptions.
 - Contextual Architechture: Ask to gather context on the standings on the project. Establish first the needed ground needed for the project.
