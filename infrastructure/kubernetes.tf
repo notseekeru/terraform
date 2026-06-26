@@ -1,9 +1,9 @@
 # --- Infrastructure ---
 
 resource "digitalocean_kubernetes_cluster" "lab_cluster" {
-  name     = "lab-cluster"
-  region   = var.default_region
-  version  = "1.34.8-do.2"
+  name    = "lab-cluster"
+  region  = var.default_region
+  version = "1.34.8-do.2"
   node_pool {
     name       = "worker-pool"
     size       = "s-2vcpu-2gb"
@@ -48,7 +48,7 @@ resource "helm_release" "argocd" {
   chart            = "argo-cd"
   namespace        = "argocd"
   create_namespace = true
-  version          = "7.7.0"                       # Pin a stable version
+  version          = "7.7.0" # Pin a stable version
   depends_on       = [digitalocean_kubernetes_cluster.lab_cluster]
 }
 
@@ -90,7 +90,7 @@ resource "kubernetes_secret" "cloudflare_tunnel_token" {
     namespace = "default"
   }
   data = {
-    token = var.cloudflare_tunnel_token           # Provide this variable securely
+    token = var.cloudflare_tunnel_token # Provide this variable securely
   }
   type = "Opaque"
 }
@@ -139,7 +139,7 @@ resource "kubernetes_secret" "argocd_repo_secret" {
 # --- ArgoCD Application (the only manifest we apply) ---
 
 resource "kubectl_manifest" "gitops_app" {
-  provider   = kubectl
+  provider = kubectl
   depends_on = [
     digitalocean_kubernetes_cluster.lab_cluster,
     helm_release.argocd,
@@ -192,3 +192,4 @@ resource "kubectl_manifest" "gitops_app" {
 #   }
 #   type = "Opaque"
 # }
+
