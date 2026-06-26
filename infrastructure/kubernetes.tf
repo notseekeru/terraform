@@ -3,7 +3,7 @@
 resource "digitalocean_kubernetes_cluster" "lab_cluster" {
   name     = "lab-cluster"
   region   = var.default_region
-  version  = "1.34.8-do.1"
+  version  = "1.34.8-do.2"
   node_pool {
     name       = "worker-pool"
     size       = "s-2vcpu-2gb"
