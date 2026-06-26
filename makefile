@@ -19,6 +19,7 @@ apply:
 
 destroy:
 	terraform -chdir=$(TF_DIR) destroy -auto-approve -var-file=../secrets.tfvars
+	doctl auth init --access-token $(grep '^do_token' secrets.tfvars | cut -d '"' -f2)
 	echo "Waiting for cluster to fully purge..."
 	while doctl kubernetes cluster list --format Name,Status | grep -q "lab-cluster"; do \
 		echo "Cluster still deleting..."; \
