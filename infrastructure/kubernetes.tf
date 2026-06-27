@@ -146,50 +146,54 @@ resource "kubectl_manifest" "gitops_app" {
     helm_release.ingress_nginx,
     kubernetes_secret.argocd_repo_secret,
     kubernetes_secret.cloudflare_tunnel_token,
-    kubernetes_secret.ghcr_credentials
+    kubernetes_secret.ghcr_credentials,
+    kubernetes_secret.diagram_secrets
   ]
   yaml_body = file("${path.module}/../../gitops/app.yaml")
 }
 
 # --- Managed Database (PostgreSQL) ---
 
-# resource "digitalocean_database_cluster" "crud_db" {
-#   name       = "crud-db"
-#   engine     = "pg"
-#   version    = "16"
-#   size       = "db-s-1vcpu-1gb"
-#   region     = var.default_region
-#   node_count = 1
+resource "digitalocean_database_cluster" "diagram_db" {
+  name       = "diagram-db"
+  engine     = "pg"
+  version    = "16"
+  size       = "db-s-1vcpu-1gb"
+  region     = var.default_region
+  node_count = 1
 
-#   private_network_uuid = digitalocean_kubernetes_cluster.lab_cluster.vpc_uuid
-# }
+  private_network_uuid = digitalocean_kubernetes_cluster.lab_cluster.vpc_uuid
+}
 
-# resource "digitalocean_database_db" "crud_database" {
-#   cluster_id = digitalocean_database_cluster.crud_db.id
-#   name       = "cruddb"
-# }
+resource "digitalocean_database_db" "diagram_database" {
+  cluster_id = digitalocean_database_cluster.diagram_db.id
+  name       = "diagramdb"
+}
 
-# resource "digitalocean_database_user" "crud_user" {
-#   cluster_id = digitalocean_database_cluster.crud_db.id
-#   name       = "crudapp"
-# }
+resource "digitalocean_database_user" "diagram_user" {
+  cluster_id = digitalocean_database_cluster.diagram_db.id
+  name       = "diagram"
+}
 
-# resource "kubernetes_secret" "db_credentials" {
-#   depends_on = [digitalocean_kubernetes_cluster.lab_cluster]
+# --- Diagram Secrets (referenced by kustomize manifests) ---
 
-#   metadata {
-#     name      = "db-credentials"
-#     namespace = "default"
-#   }
-#   data = {
-#     database-url = format(
-#       "postgresql://%s:%s@%s:25060/%s?sslmode=require",
-#       digitalocean_database_user.crud_user.name,
-#       digitalocean_database_user.crud_user.password,
-#       digitalocean_database_cluster.crud_db.private_host,
-#       digitalocean_database_db.crud_database.name,
-#     )
-#   }
-#   type = "Opaque"
-# }
+resource "kubernetes_secret" "diagram_secrets" {
+  depends_on = [digitalocean_kubernetes_cluster.lab_cluster]
+
+  metadata {
+    name      = "diagram-secrets"
+    namespace = "default"
+  }
+  data = {
+    api_key      = var.diagram_api_key
+    database_url = format(
+      "postgresql://%s:%s@%s:25060/%s?sslmode=require",
+      digitalocean_database_user.diagram_user.name,
+      digitalocean_database_user.diagram_user.password,
+      digitalocean_database_cluster.diagram_db.private_host,
+      digitalocean_database_db.diagram_database.name,
+    )
+  }
+  type = "Opaque"
+}
 

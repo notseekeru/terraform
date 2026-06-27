@@ -19,3 +19,7 @@ variable "github_pat" {
 variable "gitops_repo_url" {
   sensitive   = false
 }
+
+variable "diagram_api_key" {
+  sensitive   = true
+}
