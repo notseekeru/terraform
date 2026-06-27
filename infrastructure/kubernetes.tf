@@ -187,7 +187,7 @@ resource "kubernetes_secret" "diagram_secrets" {
   data = {
     api_key      = var.diagram_api_key
     database_url = format(
-      "postgresql://%s:%s@%s:25060/%s?sslmode=require",
+      "postgresql://%s:%s@%s:25060/%s?sslmode=no-verify",
       digitalocean_database_user.diagram_user.name,
       digitalocean_database_user.diagram_user.password,
       digitalocean_database_cluster.diagram_db.private_host,
