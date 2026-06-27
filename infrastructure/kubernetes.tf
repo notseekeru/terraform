@@ -49,6 +49,7 @@ resource "helm_release" "argocd" {
   namespace        = "argocd"
   create_namespace = true
   version          = "7.7.0" # Pin a stable version
+  timeout          = 600
   depends_on       = [digitalocean_kubernetes_cluster.lab_cluster]
 }
 
@@ -60,6 +61,7 @@ resource "helm_release" "ingress_nginx" {
   chart            = "ingress-nginx"
   namespace        = "ingress-nginx"
   create_namespace = true
+  timeout          = 600
   depends_on       = [digitalocean_kubernetes_cluster.lab_cluster]
 
   # Keep it internal (ClusterIP) - Cloudflare Tunnel will route to it via internal DNS
