@@ -1,27 +1,27 @@
-MODULE ?=
+MOD ?=
 
 .PHONY: init upgradeinit plan out apply destroy fmt validate
 
 init:
-	terraform -chdir=infra/$(MODULE) init
+	terraform -chdir=infra/$(MOD) init
 
 upgradeinit:
-	terraform -chdir=infra/$(MODULE) init -upgrade
+	terraform -chdir=infra/$(MOD) init -upgrade
 
 plan:
-	terraform -chdir=infra/$(MODULE) plan -var-file=../../secrets.tfvars
+	terraform -chdir=infra/$(MOD) plan -var-file=../../secrets.tfvars
 
 out:
-	terraform -chdir=infra/$(MODULE) plan -var-file=../../secrets.tfvars -out=tfplan
+	terraform -chdir=infra/$(MOD) plan -var-file=../../secrets.tfvars -out=tfplan
 
 apply:
-	terraform -chdir=infra/$(MODULE) apply tfplan
+	terraform -chdir=infra/$(MOD) apply tfplan
 
 destroy:
-	terraform -chdir=infra/$(MODULE) destroy -var-file=../../secrets.tfvars
+	terraform -chdir=infra/$(MOD) destroy -var-file=../../secrets.tfvars
 
 fmt:
-	terraform -chdir=infra/$(MODULE) fmt
+	terraform -chdir=infra/$(MOD) fmt
 
 validate:
-	terraform -chdir=infra/$(MODULE) validate
+	terraform -chdir=infra/$(MOD) validate
