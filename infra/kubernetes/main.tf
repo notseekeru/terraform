@@ -141,7 +141,7 @@ resource "kubernetes_secret" "diagram_secrets" {
     namespace = "default"
   }
   data = {
-    api_key      = var.diagram_api_key
+    api_key = var.diagram_api_key
     database_url = format(
       "postgresql://%s:%s@%s:25060/%s?sslmode=no-verify",
       digitalocean_database_user.diagram_user.name,
@@ -166,5 +166,5 @@ resource "kubectl_manifest" "gitops_app" {
     kubernetes_secret.ghcr_credentials,
     kubernetes_secret.diagram_secrets
   ]
-  yaml_body = file("${path.module}/../../gitops/app.yaml")
+  yaml_body = file("${path.module}/../../../gitops/app.yaml")
 }
