@@ -1,36 +1,24 @@
-TF_DIR := infrastructure
+MODULE ?= infra/droplet
 
-.PHONY: init upgradeinit plan out apply deploy destroy fmt validate
+.PHONY: init upgradeinit plan out apply fmt validate
 
 init:
-	terraform -chdir=$(TF_DIR) init
+	terraform -chdir=$(MODULE) init
 
 upgradeinit:
-	terraform -chdir=$(TF_DIR) init -upgrade
+	terraform -chdir=$(MODULE) init -upgrade
 
 plan:
-	terraform -chdir=$(TF_DIR) plan -var-file=../secrets.tfvars
+	terraform -chdir=$(MODULE) plan -var-file=../secrets.tfvars
 
 out:
-	terraform -chdir=$(TF_DIR) plan -var-file=../secrets.tfvars -out=tfplan
+	terraform -chdir=$(MODULE) plan -var-file=../secrets.tfvars -out=tfplan
 
 apply:
-	terraform -chdir=$(TF_DIR) apply tfplan
-
-destroy:
-	export DIGITALOCEAN_ACCESS_TOKEN=$$(grep '^do_token' secrets.tfvars | cut -d '"' -f2); \
-	terraform -chdir=infrastructure destroy -auto-approve -var-file=../secrets.tfvars; \
-	doctl auth init
-	echo "Waiting for cluster to fully purge..."
-	while doctl kubernetes cluster list --format Name,Status | grep -q "lab-cluster"; do \
-		echo "Cluster still deleting..."; \
-		sleep 5; \
-	done
-	echo "Cluster fully destroyed."
+	terraform -chdir=$(MODULE) apply tfplan
 
 fmt:
-	terraform -chdir=$(TF_DIR) fmt
+	terraform -chdir=$(MODULE) fmt
 
 validate:
-	terraform -chdir=$(TF_DIR) validate
-
+	terraform -chdir=$(MODULE) validate
