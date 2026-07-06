@@ -1,5 +1,4 @@
-MOD ?= droplet
-
+MOD ?= 
 .PHONY: init upgradeinit plan out apply destroy fmt validate
 
 init:
