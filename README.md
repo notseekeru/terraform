@@ -50,18 +50,18 @@ cp secrets.tfvars.example secrets.tfvars
 # Edit secrets.tfvars — add your DO token, SSH public key(s), and other secrets
 
 # 3. Initialize a module (droplet or kubernetes)
-make init MOD=droplet
+make init MOD=infra/droplet
 
 # 4. Preview
-make plan MOD=droplet
+make plan MOD=infra/droplet
 
 # 5. Apply
-make out MOD=droplet
-make apply MOD=droplet
+make out MOD=infra/droplet
+make apply MOD=infra/droplet
 
 # Or for Kubernetes:
-# make init MOD=kubernetes
-# make plan MOD=kubernetes
+# make init MOD=infra/kubernetes
+# make plan MOD=infra/kubernetes
 ```
 
 ---
@@ -99,7 +99,7 @@ terraform/
 
 ## Makefile Workflow
 
-Set `MOD` to the module subdirectory under `infra/`. Defaults to `droplet`. Example: `make plan MOD=kubernetes`.
+All targets accept `MOD=infra/droplet` (default) or `MOD=infra/kubernetes`.
 
 | Target             | Command                               | Description                      |
 | ------------------ | ------------------------------------- | -------------------------------- |
@@ -115,8 +115,8 @@ Set `MOD` to the module subdirectory under `infra/`. Defaults to `droplet`. Exam
 **Examples:**
 ```bash
 make plan                      # plan droplet changes (default module)
-make plan MOD=kubernetes  # plan kubernetes changes
-make apply MOD=kubernetes  # apply kubernetes
+make plan MOD=infra/kubernetes  # plan kubernetes changes
+make apply MOD=infra/kubernetes  # apply kubernetes
 ```
 
 ---
@@ -356,8 +356,8 @@ direnv allow
 ## Cleanup
 
 ```bash
-make destroy MOD=droplet
-make destroy MOD=kubernetes
+make destroy MOD=infra/droplet
+make destroy MOD=infra/kubernetes
 ```
 
 Each module is destroyed independently. The kubernetes `destroy` will tear down the cluster, database, and all associated resources.
