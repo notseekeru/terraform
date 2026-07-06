@@ -50,18 +50,18 @@ cp secrets.tfvars.example secrets.tfvars
 # Edit secrets.tfvars — add your DO token, SSH public key(s), and other secrets
 
 # 3. Initialize a module (droplet or kubernetes)
-make init MOD=infra/droplet
+make init MOD=droplet
 
 # 4. Preview
-make plan MOD=infra/droplet
+make plan MOD=droplet
 
 # 5. Apply
-make out MOD=infra/droplet
-make apply MOD=infra/droplet
+make out MOD=droplet
+make apply MOD=droplet
 
 # Or for Kubernetes:
-# make init MOD=infra/kubernetes
-# make plan MOD=infra/kubernetes
+# make init MOD=kubernetes
+# make plan MOD=kubernetes
 ```
 
 ---
@@ -99,24 +99,24 @@ terraform/
 
 ## Makefile Workflow
 
-All targets accept `MOD=infra/droplet` (default) or `MOD=infra/kubernetes`. Var files are loaded automatically from `../../secrets.tfvars` relative to the module dir.
+Set `MOD` to the module subdirectory under `infra/`. Defaults to `droplet`. Example: `make plan MOD=kubernetes`.
 
 | Target             | Command                               | Description                      |
 | ------------------ | ------------------------------------- | -------------------------------- |
-| `make init`        | `terraform -chdir=$(MOD) init`     | Initialize providers & backend   |
-| `make upgradeinit` | `terraform -chdir=$(MOD) init -upgrade` | Upgrade initialization      |
-| `make plan`        | `terraform -chdir=$(MOD) plan ...` | Preview changes                  |
+| `make init`        | `terraform -chdir=infra/$(MOD) init`     | Initialize providers & backend   |
+| `make upgradeinit` | `terraform -chdir=infra/$(MOD) init -upgrade` | Upgrade initialization      |
+| `make plan`        | `terraform -chdir=infra/$(MOD) plan ...` | Preview changes                  |
 | `make out`         | `... plan -out=tfplan`                | Save plan to binary file         |
-| `make apply`       | `terraform -chdir=$(MOD) apply tfplan` | Apply saved plan             |
-| `make destroy`     | `terraform -chdir=$(MOD) destroy ...` | Tear down resources          |
-| `make fmt`         | `terraform -chdir=$(MOD) fmt`      | Format all `.tf` files           |
-| `make validate`    | `terraform -chdir=$(MOD) validate` | Validate configuration           |
+| `make apply`       | `terraform -chdir=infra/$(MOD) apply tfplan` | Apply saved plan             |
+| `make destroy`     | `terraform -chdir=infra/$(MOD) destroy ...` | Tear down resources          |
+| `make fmt`         | `terraform -chdir=infra/$(MOD) fmt`      | Format all `.tf` files           |
+| `make validate`    | `terraform -chdir=infra/$(MOD) validate` | Validate configuration           |
 
 **Examples:**
 ```bash
 make plan                      # plan droplet changes (default module)
-make plan MOD=infra/kubernetes  # plan kubernetes changes
-make apply MOD=infra/kubernetes  # apply kubernetes
+make plan MOD=kubernetes  # plan kubernetes changes
+make apply MOD=kubernetes  # apply kubernetes
 ```
 
 ---
@@ -356,8 +356,8 @@ direnv allow
 ## Cleanup
 
 ```bash
-make destroy MOD=infra/droplet
-make destroy MOD=infra/kubernetes
+make destroy MOD=droplet
+make destroy MOD=kubernetes
 ```
 
 Each module is destroyed independently. The kubernetes `destroy` will tear down the cluster, database, and all associated resources.
