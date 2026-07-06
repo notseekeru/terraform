@@ -9,10 +9,10 @@ upgradeinit:
 	terraform -chdir=$(MODULE) init -upgrade
 
 plan:
-	terraform -chdir=$(MODULE) plan -var-file=../secrets.tfvars
+	terraform -chdir=$(MODULE) plan -var-file=../../secrets.tfvars
 
 out:
-	terraform -chdir=$(MODULE) plan -var-file=../secrets.tfvars -out=tfplan
+	terraform -chdir=$(MODULE) plan -var-file=../../secrets.tfvars -out=tfplan
 
 apply:
 	terraform -chdir=$(MODULE) apply tfplan
