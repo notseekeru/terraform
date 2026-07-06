@@ -122,7 +122,7 @@ make apply MODULE=infra/kubernetes  # apply kubernetes
 
 ## Variables
 
-All variables are defined in `infrastructure/variables.tf`. Secrets live in `secrets.tfvars` (gitignored).
+Variables are defined per module in `infra/droplet/variables.tf` and `infra/kubernetes/variables.tf`. Secrets live in `secrets.tfvars` (gitignored).
 
 Variables are now split across two modules. See `infra/droplet/variables.tf` and `infra/kubernetes/variables.tf`.
 
