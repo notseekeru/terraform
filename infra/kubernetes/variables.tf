@@ -3,12 +3,17 @@ variable "do_token" {
   sensitive = true
 }
 
+variable "default_region" {
+  type    = string
+  default = "sgp1"
+}
+
 variable "cloudflare_tunnel_token" {
-  sensitive   = true
+  sensitive = true
 }
 
 variable "github_username" {
-  sensitive   = false
+  sensitive = false
 }
 
 variable "github_pat" {
@@ -17,9 +22,9 @@ variable "github_pat" {
 }
 
 variable "gitops_repo_url" {
-  sensitive   = false
+  sensitive = false
 }
 
 variable "diagram_api_key" {
-  sensitive   = true
+  sensitive = true
 }
