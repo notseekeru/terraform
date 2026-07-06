@@ -108,6 +108,7 @@ All targets accept `MODULE=infra/droplet` (default) or `MODULE=infra/kubernetes`
 | `make plan`        | `terraform -chdir=$(MODULE) plan ...` | Preview changes                  |
 | `make out`         | `... plan -out=tfplan`                | Save plan to binary file         |
 | `make apply`       | `terraform -chdir=$(MODULE) apply tfplan` | Apply saved plan             |
+| `make destroy`     | `terraform -chdir=$(MODULE) destroy ...` | Tear down resources          |
 | `make fmt`         | `terraform -chdir=$(MODULE) fmt`      | Format all `.tf` files           |
 | `make validate`    | `terraform -chdir=$(MODULE) validate` | Validate configuration           |
 
