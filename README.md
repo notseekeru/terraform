@@ -28,14 +28,14 @@
 
 ## Prerequisites
 
-| Requirement               | Details                                                                         |
-| ------------------------- | ------------------------------------------------------------------------------- |
-| **Terraform**             | `>= 1.0` ([install guide](https://developer.hashicorp.com/terraform/install))   |
-| **DigitalOcean Token**    | Fine-grained PAT with write scope — see [Security](#security)                   |
-| **SSH Keys**              | Public keys uploaded to your DO account or provided inline via `secrets.tfvars` |
-| **Make**                  | (Optional) `make` for the workflow targets below                                |
-| **Nix**                   | (Optional) `nix develop` for an isolated dev shell — see [Nix Dev Shell](#nix-dev-shell) |
-| **direnv**                | (Optional) Auto-loads the Nix shell and `KUBECONFIG` on `cd`                    |
+| Requirement            | Details                                                                                  |
+| ---------------------- | ---------------------------------------------------------------------------------------- |
+| **Terraform**          | `>= 1.0` ([install guide](https://developer.hashicorp.com/terraform/install))            |
+| **DigitalOcean Token** | Fine-grained PAT with write scope — see [Security](#security)                            |
+| **SSH Keys**           | Public keys uploaded to your DO account or provided inline via `secrets.tfvars`          |
+| **Make**               | (Optional) `make` for the workflow targets below                                         |
+| **Nix**                | (Optional) `nix develop` for an isolated dev shell — see [Nix Dev Shell](#nix-dev-shell) |
+| **direnv**             | (Optional) Auto-loads the Nix shell and `KUBECONFIG` on `cd`                             |
 
 ---
 
@@ -92,27 +92,27 @@ terraform/
 ├── Makefile                 # Workflow shortcuts (accepts MOD=)
 ├── flake.nix                # Nix dev shell definition
 ├── .envrc                   # direnv: auto-nix + KUBECONFIG
-└── credentials/             # Additional secret files (gitignored)
 ```
 
 ---
 
 ## Makefile Workflow
 
-All targets accept `MOD=droplet` (default) or `MOD=kubernetes`. The `infra/` prefix is baked into each target.
+All targets accept `MOD=droplet` or `MOD=kubernetes`. The `infra/` prefix is baked into each target.
 
-| Target             | Command                               | Description                      |
-| ------------------ | ------------------------------------- | -------------------------------- |
-| `make init`        | `terraform -chdir=infra/$(MOD) init`     | Initialize providers & backend   |
-| `make upgradeinit` | `terraform -chdir=infra/$(MOD) init -upgrade` | Upgrade initialization      |
-| `make plan`        | `terraform -chdir=infra/$(MOD) plan ...` | Preview changes                  |
-| `make out`         | `... plan -out=tfplan`                | Save plan to binary file         |
-| `make apply`       | `terraform -chdir=infra/$(MOD) apply tfplan` | Apply saved plan             |
-| `make destroy`     | `terraform -chdir=infra/$(MOD) destroy ...` | Tear down resources          |
-| `make fmt`         | `terraform -chdir=infra/$(MOD) fmt`      | Format all `.tf` files           |
-| `make validate`    | `terraform -chdir=infra/$(MOD) validate` | Validate configuration           |
+| Target             | Command                                       | Description                    |
+| ------------------ | --------------------------------------------- | ------------------------------ |
+| `make init`        | `terraform -chdir=infra/$(MOD) init`          | Initialize providers & backend |
+| `make upgradeinit` | `terraform -chdir=infra/$(MOD) init -upgrade` | Upgrade initialization         |
+| `make plan`        | `terraform -chdir=infra/$(MOD) plan ...`      | Preview changes                |
+| `make out`         | `... plan -out=tfplan`                        | Save plan to binary file       |
+| `make apply`       | `terraform -chdir=infra/$(MOD) apply tfplan`  | Apply saved plan               |
+| `make destroy`     | `terraform -chdir=infra/$(MOD) destroy ...`   | Tear down resources            |
+| `make fmt`         | `terraform -chdir=infra/$(MOD) fmt`           | Format all `.tf` files         |
+| `make validate`    | `terraform -chdir=infra/$(MOD) validate`      | Validate configuration         |
 
 **Examples:**
+
 ```bash
 make plan                      # plan droplet changes (default module)
 make plan MOD=kubernetes  # plan kubernetes changes
@@ -129,26 +129,26 @@ Variables are now split across two modules. See `infra/droplet/variables.tf` and
 
 ### `infra/droplet/variables.tf`
 
-| Variable           | Type              | Required | Default  | Description                           |
-| ------------------ | ----------------- | -------- | -------- | ------------------------------------- |
-| `do_token`         | `string`          | ✓        | —        | DigitalOcean PAT (write scope)        |
-| `ssh_public_keys`  | `map(string)`     | ✓        | —        | SSH key name → public key material    |
-| `default_region`   | `string`          | —        | `sgp1`   | Default region for all resources      |
-| `default_size`     | `string`          | —        | `s-1vcpu-1gb` | Default Droplet size             |
-| `default_image`    | `string`          | —        | `debian-13-x64` | Default Droplet image           |
-| `servers`          | `map(object(...))`| —        | `{}`     | Server definitions — see [Droplets](#droplets) |
+| Variable          | Type               | Required | Default         | Description                                    |
+| ----------------- | ------------------ | -------- | --------------- | ---------------------------------------------- |
+| `do_token`        | `string`           | ✓        | —               | DigitalOcean PAT (write scope)                 |
+| `ssh_public_keys` | `map(string)`      | ✓        | —               | SSH key name → public key material             |
+| `default_region`  | `string`           | —        | `sgp1`          | Default region for all resources               |
+| `default_size`    | `string`           | —        | `s-1vcpu-1gb`   | Default Droplet size                           |
+| `default_image`   | `string`           | —        | `debian-13-x64` | Default Droplet image                          |
+| `servers`         | `map(object(...))` | —        | `{}`            | Server definitions — see [Droplets](#droplets) |
 
 ### `infra/kubernetes/variables.tf`
 
-| Variable                  | Type      | Required | Default  | Description                                   |
-| ------------------------- | --------- | -------- | -------- | --------------------------------------------- |
-| `do_token`                | `string`  | ✓        | —        | DigitalOcean PAT (write scope)                |
-| `default_region`          | `string`  | —        | `sgp1`   | Default region for the cluster and DB         |
-| `cloudflare_tunnel_token` | `string`  | ✓        | —        | Cloudflare Tunnel token for `cloudflared`     |
-| `github_username`         | `string`  | ✓        | —        | GitHub username for PAT + GHCR auth           |
-| `github_pat`              | `string`  | ✓        | —        | GitHub PAT (repo + read:packages scopes)      |
-| `gitops_repo_url`         | `string`  | ✓        | —        | GitOps repo URL (consumed by ArgoCD)          |
-| `diagram_api_key`         | `string`  | ✓        | —        | API key for the diagram service               |
+| Variable                  | Type     | Required | Default | Description                               |
+| ------------------------- | -------- | -------- | ------- | ----------------------------------------- |
+| `do_token`                | `string` | ✓        | —       | DigitalOcean PAT (write scope)            |
+| `default_region`          | `string` | —        | `sgp1`  | Default region for the cluster and DB     |
+| `cloudflare_tunnel_token` | `string` | ✓        | —       | Cloudflare Tunnel token for `cloudflared` |
+| `github_username`         | `string` | ✓        | —       | GitHub username for PAT + GHCR auth       |
+| `github_pat`              | `string` | ✓        | —       | GitHub PAT (repo + read:packages scopes)  |
+| `gitops_repo_url`         | `string` | ✓        | —       | GitOps repo URL (consumed by ArgoCD)      |
+| `diagram_api_key`         | `string` | ✓        | —       | API key for the diagram service           |
 
 ---
 
@@ -251,12 +251,12 @@ echo 'export KUBECONFIG=$(pwd)/kubeconfig' >> .envrc && direnv allow
 
 Installed via Helm in the `ingress-nginx` namespace. The service is configured as `ClusterIP` (internal only) — Cloudflare Tunnel routes external traffic to it.
 
-| Setting           | Value     |
-| ----------------- | --------- |
-| Namespace         | `ingress-nginx` |
-| Service type      | `ClusterIP` |
-| Request memory    | `128Mi`   |
-| Request CPU       | `100m`    |
+| Setting        | Value           |
+| -------------- | --------------- |
+| Namespace      | `ingress-nginx` |
+| Service type   | `ClusterIP`     |
+| Request memory | `128Mi`         |
+| Request CPU    | `100m`          |
 
 ---
 
@@ -295,13 +295,13 @@ argocd account update-password --grpc-web
 
 A DigitalOcean managed PostgreSQL database (`diagram-db`) is provisioned in the same VPC as the Kubernetes cluster for low-latency private connectivity.
 
-| Setting         | Value               |
-| --------------- | ------------------- |
-| Engine          | PostgreSQL 16       |
-| Size            | `db-s-1vcpu-1gb`    |
-| Node count      | 1                   |
-| Region          | `var.default_region` |
-| Network         | Cluster VPC (private) |
+| Setting    | Value                 |
+| ---------- | --------------------- |
+| Engine     | PostgreSQL 16         |
+| Size       | `db-s-1vcpu-1gb`      |
+| Node count | 1                     |
+| Region     | `var.default_region`  |
+| Network    | Cluster VPC (private) |
 
 The database user credentials and connection string are injected into Kubernetes as the `diagram-secrets` secret — consumed by application pods.
 
@@ -311,12 +311,12 @@ The database user credentials and connection string are injected into Kubernetes
 
 The following secrets are created automatically by Terraform (no manual `kubectl create secret` needed):
 
-| Secret Name              | Namespace | Purpose                                    |
-| ------------------------ | --------- | ------------------------------------------ |
-| `cloudflared-token`      | `default` | Cloudflare Tunnel token for `cloudflared`  |
-| `ghcr-login`             | `default` | Docker registry credentials for GHCR       |
-| `diagram-secrets`        | `default` | API key + PostgreSQL connection string     |
-| `repo-secret`            | `argocd`  | ArgoCD repository credentials (private repo) |
+| Secret Name         | Namespace | Purpose                                      |
+| ------------------- | --------- | -------------------------------------------- |
+| `cloudflared-token` | `default` | Cloudflare Tunnel token for `cloudflared`    |
+| `ghcr-login`        | `default` | Docker registry credentials for GHCR         |
+| `diagram-secrets`   | `default` | API key + PostgreSQL connection string       |
+| `repo-secret`       | `argocd`  | ArgoCD repository credentials (private repo) |
 
 ---
 
@@ -332,12 +332,12 @@ nix develop
 direnv allow
 ```
 
-| Tool       | Purpose                        |
-| ---------- | ------------------------------ |
-| `terraform` | Infrastructure provisioning    |
-| `kubectl`  | Kubernetes management          |
-| `argocd`   | ArgoCD CLI                     |
-| `doctl`    | DigitalOcean CLI (fallback)    |
+| Tool        | Purpose                     |
+| ----------- | --------------------------- |
+| `terraform` | Infrastructure provisioning |
+| `kubectl`   | Kubernetes management       |
+| `argocd`    | ArgoCD CLI                  |
+| `doctl`     | DigitalOcean CLI (fallback) |
 
 ---
 
@@ -347,7 +347,7 @@ direnv allow
 - The DO token is consumed via `var.do_token` (marked `sensitive = true`).
 - SSH keys are registered with Droplets at provision time — no post-provision injection.
 - GitHub PAT and credentials are written directly to Kubernetes secrets — they never leave the Terraform state.
-- `secrets.tfvars`, `*.tfvars`, `kubeconfig`, and `credentials/` are all in `.gitignore`.
+- `secrets.tfvars`, `*.tfvars`, and `kubeconfig` are all in `.gitignore`.
 - Consider using a vault or environment variables instead of plain-text `.tfvars` for production setups.
 - Consider GitLeaks + pre-commit hooks to prevent accidental secret commits.
 
