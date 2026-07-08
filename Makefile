@@ -30,18 +30,18 @@ validate:
 
 infisical-plan:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-		terraform -chdir=infra/$(MOD) plan \
-		-var="do_token=$$DO_TOKEN" \
-		-var="cloudflare_token=$$CLOUDFLARE_TOKEN" \
-		-var="github_pat=$$GITHUB_PAT" \
-		-var="github_username=$$GITHUB_USERNAME" \
-		-var="gitops_repo_url=$$GITHUB_REPO_URL"
+		bash -c 'terraform -chdir=infra/$(MOD) plan \
+			-var=do_token=$$DO_TOKEN \
+			-var=cloudflare_token=$$CLOUDFLARE_TOKEN \
+			-var=github_pat=$$GITHUB_PAT \
+			-var=github_username=$$GITHUB_USERNAME \
+			-var=gitops_repo_url=$$GITHUB_REPO_URL'
 
 infisical-apply:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-		terraform -chdir=infra/$(MOD) apply \
-		-var="do_token=$$DO_TOKEN" \
-		-var="cloudflare_token=$$CLOUDFLARE_TOKEN" \
-		-var="github_pat=$$GITHUB_PAT" \
-		-var="github_username=$$GITHUB_USERNAME" \
-		-var="gitops_repo_url=$$GITHUB_REPO_URL"
+		bash -c 'terraform -chdir=infra/$(MOD) apply \
+			-var=do_token=$$DO_TOKEN \
+			-var=cloudflare_token=$$CLOUDFLARE_TOKEN \
+			-var=github_pat=$$GITHUB_PAT \
+			-var=github_username=$$GITHUB_USERNAME \
+			-var=gitops_repo_url=$$GITHUB_REPO_URL'
