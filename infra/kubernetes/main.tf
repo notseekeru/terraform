@@ -126,7 +126,7 @@ resource "kubernetes_secret" "argocd_repo_secret" {
     }
   }
   data = {
-    url      = var.GITOPS_REPO_URL
+    url      = var.GITHUB_REPO_URL
     username = var.GITHUB_USERNAME
     password = var.GITHUB_PAT
   }

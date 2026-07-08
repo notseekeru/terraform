@@ -21,7 +21,7 @@ variable "GITHUB_PAT" {
   sensitive   = true
 }
 
-variable "GITOPS_REPO_URL" {
+variable "GITHUB_REPO_URL" {
   sensitive = false
 }
 
