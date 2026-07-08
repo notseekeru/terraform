@@ -25,7 +25,7 @@ resource "digitalocean_droplet" "this" {
 }
 
 resource "local_file" "ansible_inventory" {
-  filename  = "${path.module}/../../ansible/inventories/droplets.ini"
+  filename  = "${path.module}/../../../ansible/inventories/droplets.ini"
   content = templatefile("${path.module}/inventory.tmpl", {
     servers = {
       for k, d in digitalocean_droplet.this : k => {
