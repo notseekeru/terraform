@@ -18,6 +18,8 @@ credentials/.github-pat.txt
 # Kubernetes
 kubeconfig
 
+.infisical.json
+
 # Direnv
 .direnv
 .stfolder/
