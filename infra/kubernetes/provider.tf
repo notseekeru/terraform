@@ -1,5 +1,5 @@
 provider "digitalocean" {
-  token = var.do_token
+  token = var.DO_TOKEN
 }
 
 provider "helm" {

@@ -1,4 +1,4 @@
-variable "do_token" {
+variable "DO_TOKEN" {
   type      = string
   sensitive = true
 }
