@@ -14,6 +14,7 @@
           terraform
           argocd
           doctl
+          infisical
         ];
       };
     };
