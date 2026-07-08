@@ -8,7 +8,7 @@ variable "default_region" {
   default = "sgp1"
 }
 
-variable "cloudflare_tunnel_token" {
+variable "cloudflare_token" {
   sensitive = true
 }
 

@@ -89,7 +89,7 @@ resource "kubernetes_secret" "cloudflare_tunnel_token" {
     namespace = "default"
   }
   data = {
-    token = var.cloudflare_tunnel_token
+    token = var.cloudflare_token
   }
   type = "Opaque"
 }
