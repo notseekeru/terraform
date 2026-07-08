@@ -2,7 +2,7 @@ MOD ?=
 ENV ?= dev
 SECRETS_PATH ?= /terraform
 
-.PHONY: init upgradeinit plan out apply destroy fmt validate infisical-plan infisical-apply
+.PHONY: init upgradeinit plan out apply destroy fmt validate infi-plan infi-apply infi-destroy
 
 init:
 	terraform -chdir=infra/$(MOD) init
@@ -35,3 +35,7 @@ infi-plan:
 infi-apply:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
 		terraform -chdir=infra/$(MOD) apply
+
+infi-destroy:
+	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
+		terraform -chdir=infra/$(MOD) destroy
