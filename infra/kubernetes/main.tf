@@ -141,7 +141,7 @@ resource "kubernetes_secret" "diagram_secrets" {
     namespace = "default"
   }
   data = {
-    api_key = var.diagram_api_key
+    api_key = var.DIAGRAM_API_KEY
     database_url = format(
       "postgresql://%s:%s@%s:25060/%s?sslmode=no-verify",
       digitalocean_database_user.diagram_user.name,

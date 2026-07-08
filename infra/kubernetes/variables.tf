@@ -25,6 +25,6 @@ variable "GITOPS_REPO_URL" {
   sensitive = false
 }
 
-variable "diagram_api_key" {
+variable "DIAGRAM_API_KEY" {
   sensitive = true
 }
