@@ -89,7 +89,7 @@ resource "kubernetes_secret" "cloudflare_tunnel_token" {
     namespace = "default"
   }
   data = {
-    token = var.cloudflare_token
+    token = var.CLOUDFLARE_TOKEN
   }
   type = "Opaque"
 }
@@ -106,9 +106,9 @@ resource "kubernetes_secret" "ghcr_credentials" {
     ".dockerconfigjson" = jsonencode({
       auths = {
         "ghcr.io" = {
-          username = var.github_username
-          password = var.github_pat
-          auth     = base64encode("${var.github_username}:${var.github_pat}")
+          username = var.GITHUB_USERNAME
+          password = var.GITHUB_PAT
+          auth     = base64encode("${var.GITHUB_USERNAME}:${var.GITHUB_PAT}")
         }
       }
     })
@@ -126,9 +126,9 @@ resource "kubernetes_secret" "argocd_repo_secret" {
     }
   }
   data = {
-    url      = var.gitops_repo_url
-    username = var.github_username
-    password = var.github_pat
+    url      = var.GITOPS_REPO_URL
+    username = var.GITHUB_USERNAME
+    password = var.GITHUB_PAT
   }
   type = "Opaque"
 }

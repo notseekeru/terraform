@@ -1,4 +1,4 @@
-variable "do_token" {
+variable "DO_TOKEN" {
   type      = string
   sensitive = true
 }
@@ -8,20 +8,20 @@ variable "default_region" {
   default = "sgp1"
 }
 
-variable "cloudflare_token" {
+variable "CLOUDFLARE_TOKEN" {
   sensitive = true
 }
 
-variable "github_username" {
+variable "GITHUB_USERNAME" {
   sensitive = false
 }
 
-variable "github_pat" {
+variable "GITHUB_PAT" {
   description = "GitHub Personal Access Token (with repo and read:packages scopes)"
   sensitive   = true
 }
 
-variable "gitops_repo_url" {
+variable "GITOPS_REPO_URL" {
   sensitive = false
 }
 
