@@ -28,10 +28,10 @@ fmt:
 validate:
 	terraform -chdir=infra/$(MOD) validate
 
-infisical-plan:
+infi-plan:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
 		terraform -chdir=infra/$(MOD) plan
 
-infisical-apply:
+infi-apply:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
 		terraform -chdir=infra/$(MOD) apply
