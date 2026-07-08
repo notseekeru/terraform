@@ -30,8 +30,8 @@ validate:
 
 infisical-plan:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-		bash -c 'for v in DO_TOKEN CLOUDFLARE_TOKEN GITHUB_PAT GITHUB_USERNAME GITHUB_REPO_URL DIAGRAM_API_KEY; do export TF_VAR_$$v=$${!v}; done; terraform -chdir=infra/$(MOD) plan'
+		terraform -chdir=infra/$(MOD) plan
 
 infisical-apply:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-		bash -c 'for v in DO_TOKEN CLOUDFLARE_TOKEN GITHUB_PAT GITHUB_USERNAME GITHUB_REPO_URL DIAGRAM_API_KEY; do export TF_VAR_$$v=$${!v}; done; terraform -chdir=infra/$(MOD) apply'
+		terraform -chdir=infra/$(MOD) apply
