@@ -96,26 +96,26 @@ terraform/
 
 All targets accept `MOD=droplet` or `MOD=kubernetes`. The `infra/` prefix is baked into each target.
 
-| Target             | Command                                                           | Description                           |
-| ------------------ | ----------------------------------------------------------------- | ------------------------------------- |
-| `make init`        | `terraform -chdir=infra/$(MOD) init`                              | Initialize providers & backend        |
-| `make upgradeinit` | `terraform -chdir=infra/$(MOD) init -upgrade`                     | Upgrade initialization                |
-| `make plan`        | `terraform -chdir=infra/$(MOD) plan -var-file=../../secrets.tfvars` | Preview changes                   |
-| `make out`         | `terraform -chdir=infra/$(MOD) plan -var-file=../../secrets.tfvars -out=tfplan` | Save plan to binary file |
-| `make apply`       | `terraform -chdir=infra/$(MOD) apply tfplan`                      | Apply saved plan                      |
-| `make destroy`     | `terraform -chdir=infra/$(MOD) destroy -var-file=../../secrets.tfvars` | Tear down resources           |
-| `make fmt`         | `terraform -chdir=infra/$(MOD) fmt`                               | Format all `.tf` files                |
-| `make validate`    | `terraform -chdir=infra/$(MOD) validate`                          | Validate configuration                |
-| `make infisical-plan`  | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) plan` | Plan via Infisical secrets |
-| `make infisical-apply` | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) apply` | Apply via Infisical secrets |
+| Target                 | Command                                                                                    | Description                    |
+| ---------------------- | ------------------------------------------------------------------------------------------ | ------------------------------ |
+| `make init`            | `terraform -chdir=infra/$(MOD) init`                                                       | Initialize providers & backend |
+| `make upgradeinit`     | `terraform -chdir=infra/$(MOD) init -upgrade`                                              | Upgrade initialization         |
+| `make plan`            | `terraform -chdir=infra/$(MOD) plan -var-file=../../secrets.tfvars`                        | Preview changes                |
+| `make out`             | `terraform -chdir=infra/$(MOD) plan -var-file=../../secrets.tfvars -out=tfplan`            | Save plan to binary file       |
+| `make apply`           | `terraform -chdir=infra/$(MOD) apply tfplan`                                               | Apply saved plan               |
+| `make destroy`         | `terraform -chdir=infra/$(MOD) destroy -var-file=../../secrets.tfvars`                     | Tear down resources            |
+| `make fmt`             | `terraform -chdir=infra/$(MOD) fmt`                                                        | Format all `.tf` files         |
+| `make validate`        | `terraform -chdir=infra/$(MOD) validate`                                                   | Validate configuration         |
+| `make infisical-plan`  | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) plan`  | Plan via Infisical secrets     |
+| `make infisical-apply` | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) apply` | Apply via Infisical secrets    |
 
 **Variables:**
 
-| Variable       | Default     | Description                                    |
-| -------------- | ----------- | ---------------------------------------------- |
-| `MOD`          | (empty)     | Module subdirectory: `droplet` or `kubernetes`  |
-| `ENV`          | `dev`       | Infisical environment                          |
-| `SECRETS_PATH` | `/terraform` | Infisical secrets path                        |
+| Variable       | Default      | Description                                    |
+| -------------- | ------------ | ---------------------------------------------- |
+| `MOD`          | (empty)      | Module subdirectory: `droplet` or `kubernetes` |
+| `ENV`          | `dev`        | Infisical environment                          |
+| `SECRETS_PATH` | `/terraform` | Infisical secrets path                         |
 
 **Examples:**
 
@@ -187,10 +187,10 @@ Every Droplet is provisioned with all SSH keys from `ssh_public_keys`. Droplets 
 
 ## Outputs for Droplets
 
-| Name          | Description                                                      |
-| ------------- | ---------------------------------------------------------------- |
+| Name          | Description                                                            |
+| ------------- | ---------------------------------------------------------------------- |
 | `droplets`    | Full map of all Droplets with IP, URN, region, size, image, tags, IPv6 |
-| `droplet_ips` | Quick lookup: server name → public IPv4                          |
+| `droplet_ips` | Quick lookup: server name → public IPv4                                |
 
 Retrieve after deploy:
 
