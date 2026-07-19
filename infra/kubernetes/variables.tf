@@ -25,6 +25,12 @@ variable "GITHUB_REPO_URL" {
   sensitive = false
 }
 
+variable "app_yaml_path" {
+  type    = string
+  default = null
+  description = "Path to app.yaml manifest. Defaults to ../../../gitops/app.yaml relative to this module."
+}
+
 variable "DIAGRAM_API_KEY" {
   sensitive = true
 }

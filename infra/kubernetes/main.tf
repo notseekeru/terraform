@@ -1,5 +1,9 @@
 # --- Kubernetes Cluster ---
 
+locals {
+  app_yaml_path = var.app_yaml_path != null ? var.app_yaml_path : "${path.module}/../../../gitops/app.yaml"
+}
+
 resource "digitalocean_kubernetes_cluster" "lab_cluster" {
   name    = "lab-cluster"
   region  = var.default_region
@@ -166,5 +170,5 @@ resource "kubectl_manifest" "gitops_app" {
     kubernetes_secret.ghcr_credentials,
     kubernetes_secret.diagram_secrets
   ]
-  yaml_body = file("${path.module}/../../../gitops/app.yaml")
+  yaml_body = file(local.app_yaml_path)
 }
