@@ -275,7 +275,7 @@ Installed via the `argoproj/argo-helm` chart at version `7.7.0` in the `argocd` 
 2. Terraform applies `~/gitops/app.yaml` (sibling directory, referenced via `../../../gitops/` from the module) via the `kubectl` provider — this is the **only** manifest applied directly
 3. That root Application tells ArgoCD to sync the rest from the GitOps repo
 
-**Note:** `~/gitops/app.yaml` doesn't exist yet. The `kubectl_manifest` resource in `infra/kubernetes/main.tf` references it — you need to create this file (or the whole apply blows up).
+**Note:** `~/gitops/app.yaml` doesn't exist yet. The `kubectl_manifest` resource in `infra/kubernetes/main.tf` references it — you need to create this file or a stub for it.
 
 ### CLI setup
 
