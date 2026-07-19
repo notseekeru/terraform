@@ -275,9 +275,9 @@ Installed via the `argoproj/argo-helm` chart at version `7.7.0` in the `argocd` 
 2. Terraform applies the root Application manifest via the `kubectl` provider — this is the **only** manifest applied directly
 3. That root Application tells ArgoCD to sync the rest from the GitOps repo
 
-The manifest path defaults to `../../../gitops/app.yaml` (relative to the module) but can be overridden via the `app_yaml_path` variable. See `infra/kubernetes/variables.tf`.
+The manifest path defaults to `gitops/app.yaml` (relative to the Terraform root) but can be overridden via the `app_yaml_path` variable. See `infra/kubernetes/variables.tf`.
 
-**Note:** The default `~/gitops/app.yaml` doesn't exist yet — create this file or a stub, or set `app_yaml_path` to an existing path.
+**Note:** The default `gitops/app.yaml` doesn't exist yet — create this file or a stub, or set `app_yaml_path` to an existing path.
 
 ### CLI setup
 
