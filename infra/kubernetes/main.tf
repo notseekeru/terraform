@@ -1,7 +1,7 @@
 # --- Kubernetes Cluster ---
 
 locals {
-  app_yaml_path = var.app_yaml_path != null ? var.app_yaml_path : "${path.root}/gitops/app.yaml"
+  app_yaml_path = var.app_yaml_path != null ? var.app_yaml_path : "${path.module}/../../../gitops/app.yaml"
 }
 
 resource "digitalocean_kubernetes_cluster" "lab_cluster" {
