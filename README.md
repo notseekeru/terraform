@@ -15,7 +15,7 @@
 - [Droplets](#droplets)
 - [Outputs](#outputs)
 - [Ansible Integration](#ansible-integration)
-- [Kubernetes Cluster](#kubernetes-cluster)
+- [DOKS Cluster](#doks-cluster)
 - [Nginx Ingress Controller](#nginx-ingress-controller)
 - [ArgoCD](#argocd)
 - [Managed Database (PostgreSQL)](#managed-database-postgresql)
@@ -49,7 +49,7 @@ cd terraform
 cp secrets.tfvars.example secrets.tfvars
 # Edit secrets.tfvars — add your DO_TOKEN, SSH public key(s), and other secrets
 
-# 3. Initialize a module (droplet or kubernetes)
+# 3. Initialize a module (droplet or doks)
 make init MOD=droplet
 
 # 4. Preview
@@ -59,9 +59,9 @@ make plan MOD=droplet
 make out MOD=droplet
 make apply MOD=droplet
 
-# Or for Kubernetes:
-# make init MOD=kubernetes
-# make plan MOD=kubernetes
+# Or for DOKS:
+# make init MOD=doks
+# make plan MOD=doks
 ```
 
 ---
@@ -78,7 +78,7 @@ terraform/
 │   │   ├── main.tf          #   SSH keys, droplets, Ansible inventory
 │   │   ├── inventory.tmpl   #   Ansible inventory template (rendered post-apply)
 │   │   └── outputs.tf       #   droplet IPs and attributes
-│   └── kubernetes/          #   state #2 — DOKS + DB + helm + k8s resources
+│   └── doks/               #   state #2 — DOKS + DB + helm + k8s resources
 │       ├── versions.tf      #   Terraform & all providers (DO, helm, k8s, kubectl, local)
 │       ├── provider.tf      #   DO + dynamic k8s/helm/kubectl providers
 │       ├── variables.tf     #   DO_TOKEN, CLOUDFLARE_TOKEN, GITHUB_*, DIAGRAM_API_KEY
@@ -94,7 +94,7 @@ terraform/
 
 ## Makefile Workflow
 
-All targets accept `MOD=droplet` or `MOD=kubernetes`. The `infra/` prefix is baked into each target.
+All targets accept `MOD=droplet` or `MOD=doks`. The `infra/` prefix is baked into each target.
 
 | Target                 | Command                                                                                    | Description                    |
 | ---------------------- | ------------------------------------------------------------------------------------------ | ------------------------------ |
@@ -111,26 +111,26 @@ All targets accept `MOD=droplet` or `MOD=kubernetes`. The `infra/` prefix is bak
 
 **Variables:**
 
-| Variable       | Default      | Description                                    |
-| -------------- | ------------ | ---------------------------------------------- |
-| `MOD`          | (empty)      | Module subdirectory: `droplet` or `kubernetes` |
-| `ENV`          | `dev`        | Infisical environment                          |
-| `SECRETS_PATH` | `/terraform` | Infisical secrets path                         |
+| Variable       | Default      | Description                              |
+| -------------- | ------------ | ---------------------------------------- |
+| `MOD`          | (empty)      | Module subdirectory: `droplet` or `doks` |
+| `ENV`          | `dev`        | Infisical environment                    |
+| `SECRETS_PATH` | `/terraform` | Infisical secrets path                   |
 
 **Examples:**
 
 ```bash
 make plan                          # plan droplet changes (default module)
-make plan MOD=kubernetes           # plan kubernetes changes
-make apply MOD=kubernetes          # apply kubernetes
-make infisical-plan MOD=kubernetes # plan using Infisical
+make plan MOD=doks           # plan DOKS changes
+make apply MOD=doks          # apply DOKS
+make infisical-plan MOD=doks # plan using Infisical
 ```
 
 ---
 
 ## Variables
 
-Variables are defined per module in `infra/droplet/variables.tf` and `infra/kubernetes/variables.tf`. Secrets live in `secrets.tfvars` (gitignored).
+Variables are defined per module in `infra/droplet/variables.tf` and `infra/doks/variables.tf`. Secrets live in `secrets.tfvars` (gitignored).
 
 ### `infra/droplet/variables.tf`
 
@@ -143,7 +143,7 @@ Variables are defined per module in `infra/droplet/variables.tf` and `infra/kube
 | `default_image`   | `string`           | —        | `debian-13-x64` | Default Droplet image                          |
 | `servers`         | `map(object(...))` | —        | `{}`            | Server definitions — see [Droplets](#droplets) |
 
-### `infra/kubernetes/variables.tf`
+### `infra/doks/variables.tf`
 
 | Variable           | Type     | Required | Default | Description                               |
 | ------------------ | -------- | -------- | ------- | ----------------------------------------- |
@@ -227,7 +227,7 @@ ansible-playbook -i inventories/droplets.ini --limit tag_web playbooks/site.yml
 
 ---
 
-## Kubernetes Cluster
+## DOKS Cluster
 
 | Attribute     | Value                | Notes                        |
 | ------------- | -------------------- | ---------------------------- |
@@ -275,7 +275,7 @@ Installed via the `argoproj/argo-helm` chart at version `7.7.0` in the `argocd` 
 2. Terraform applies the root Application manifest via the `kubectl` provider — this is the **only** manifest applied directly
 3. That root Application tells ArgoCD to sync the rest from the GitOps repo
 
-The manifest path defaults to `../../../gitops/app.yaml` (relative to the `infra/kubernetes` module) but can be overridden via the `app_yaml_path` variable. See `infra/kubernetes/variables.tf`.
+The manifest path defaults to `../../../gitops/app.yaml` (relative to the `infra/doks` module) but can be overridden via the `app_yaml_path` variable. See `infra/doks/variables.tf`.
 
 **Note:** The default `gitops/app.yaml` (resolved from the repo root as `~/gitops/app.yaml`) doesn't exist yet — create this file or a stub, or set `app_yaml_path` to an existing path.
 
@@ -367,10 +367,10 @@ direnv allow
 
 ```bash
 make destroy MOD=droplet
-make destroy MOD=kubernetes
+make destroy MOD=doks
 ```
 
-Each module is destroyed independently. The kubernetes `destroy` will tear down the cluster, database, and all associated resources.
+Each module is destroyed independently. The doks `destroy` will tear down the cluster, database, and all associated resources.
 
 ---
 
