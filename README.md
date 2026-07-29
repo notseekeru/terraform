@@ -13,9 +13,9 @@
 - [Makefile Workflow](#makefile-workflow)
 - [Variables](#variables)
 - [Droplets](#droplets)
-- [Outputs](#outputs)
 - [Ansible Integration](#ansible-integration)
-- [DOKS Cluster](#doks-cluster)
+- [DOKS Cluster (Cloud)](#doks-cluster-cloud)
+- [K3s Module (Local)](#k3s-module-local)
 - [Nginx Ingress Controller](#nginx-ingress-controller)
 - [ArgoCD](#argocd)
 - [Managed Database (PostgreSQL)](#managed-database-postgresql)
@@ -31,7 +31,7 @@
 | Requirement            | Details                                                                                  |
 | ---------------------- | ---------------------------------------------------------------------------------------- |
 | **Terraform**          | `>= 1.0` ([install guide](https://developer.hashicorp.com/terraform/install))            |
-| **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — see [Security](#security)               |
+| **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — needed only for `doks` / `droplet`     |
 | **SSH Keys**           | Public keys uploaded to your DO account or provided inline via `secrets.tfvars`          |
 | **Make**               | (Optional) `make` for the workflow targets below                                         |
 | **Nix**                | (Optional) `nix develop` for an isolated dev shell — see [Nix Dev Shell](#nix-dev-shell) |
@@ -49,7 +49,7 @@ cd terraform
 cp secrets.tfvars.example secrets.tfvars
 # Edit secrets.tfvars — add your DO_TOKEN, SSH public key(s), and other secrets
 
-# 3. Initialize a module (droplet or doks)
+# 3. Initialize a module (droplet, doks, or k3s)
 make init MOD=droplet
 
 # 4. Preview
@@ -59,9 +59,13 @@ make plan MOD=droplet
 make out MOD=droplet
 make apply MOD=droplet
 
-# Or for DOKS:
+# For DOKS:
 # make init MOD=doks
 # make plan MOD=doks
+
+# For local k3s:
+# make init MOD=k3s
+# make plan MOD=k3s
 ```
 
 ---
@@ -78,11 +82,16 @@ terraform/
 │   │   ├── main.tf          #   SSH keys, droplets, Ansible inventory
 │   │   ├── inventory.tmpl   #   Ansible inventory template (rendered post-apply)
 │   │   └── outputs.tf       #   droplet IPs and attributes
-│   └── doks/               #   state #2 — DOKS + DB + helm + k8s resources
-│       ├── versions.tf      #   Terraform & all providers (DO, helm, k8s, kubectl, local)
-│       ├── provider.tf      #   DO + dynamic k8s/helm/kubectl providers
-│       ├── variables.tf     #   DO_TOKEN, CLOUDFLARE_TOKEN, GITHUB_*, DIAGRAM_API_KEY
-│       └── main.tf          #   cluster → DB → helm releases → secrets → argocd app
+│   ├── doks/                #   state #2 — DOKS cluster (cloud)
+│   │   ├── versions.tf      #   DO, helm, k8s, kubectl, local
+│   │   ├── provider.tf      #   DO + dynamic k8s/helm/kubectl providers
+│   │   ├── variables.tf     #   DO_TOKEN, CLOUDFLARE_TOKEN, GITHUB_*, DIAGRAM_API_KEY
+│   │   └── main.tf          #   cluster → managed PG → helm releases → secrets → argocd app
+│   └── k3s/                 #   state #3 — local k3s cluster (no DO)
+│       ├── versions.tf      #   helm, k8s, kubectl only
+│       ├── provider.tf      #   providers read from ~/.kube/config
+│       ├── variables.tf     #   CLOUDFLARE_TOKEN, GITHUB_*, DIAGRAM_API_KEY, POSTGRES_PASSWORD
+│       └── main.tf          #   helm releases → self-hosted PG StatefulSet → secrets → argocd app
 ├── secrets.tfvars           # Sensitive variables (gitignored)
 ├── secrets.tfvars.example   # Template for secrets
 ├── Makefile                 # Workflow shortcuts (accepts MOD=, ENV=, SECRETS_PATH=)
@@ -94,7 +103,7 @@ terraform/
 
 ## Makefile Workflow
 
-All targets accept `MOD=droplet` or `MOD=doks`. The `infra/` prefix is baked into each target.
+All targets accept `MOD=droplet`, `MOD=doks`, or `MOD=k3s`. The `infra/` prefix is baked into each target.
 
 | Target                 | Command                                                                                    | Description                    |
 | ---------------------- | ------------------------------------------------------------------------------------------ | ------------------------------ |
@@ -106,31 +115,34 @@ All targets accept `MOD=droplet` or `MOD=doks`. The `infra/` prefix is baked int
 | `make destroy`         | `terraform -chdir=infra/$(MOD) destroy -var-file=../../secrets.tfvars`                     | Tear down resources            |
 | `make fmt`             | `terraform -chdir=infra/$(MOD) fmt`                                                        | Format all `.tf` files         |
 | `make validate`        | `terraform -chdir=infra/$(MOD) validate`                                                   | Validate configuration         |
-| `make infisical-plan`  | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) plan`  | Plan via Infisical secrets     |
-| `make infisical-apply` | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) apply` | Apply via Infisical secrets    |
+| `make infi-plan`       | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) plan`  | Plan via Infisical secrets     |
+| `make infi-out`        | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) plan -out=tfplan` | Plan + save via Infisical |
+| `make infi-apply`      | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) apply` | Apply via Infisical secrets    |
+| `make infi-destroy`    | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) destroy` | Destroy via Infisical         |
 
 **Variables:**
 
-| Variable       | Default      | Description                              |
-| -------------- | ------------ | ---------------------------------------- |
-| `MOD`          | (empty)      | Module subdirectory: `droplet` or `doks` |
-| `ENV`          | `dev`        | Infisical environment                    |
-| `SECRETS_PATH` | `/terraform` | Infisical secrets path                   |
+| Variable       | Default      | Description                                        |
+| -------------- | ------------ | -------------------------------------------------- |
+| `MOD`          | (empty)      | Module subdirectory: `droplet`, `doks`, or `k3s`   |
+| `ENV`          | `dev`        | Infisical environment                              |
+| `SECRETS_PATH` | `/terraform` | Infisical secrets path                             |
 
 **Examples:**
 
 ```bash
 make plan                          # plan droplet changes (default module)
-make plan MOD=doks           # plan DOKS changes
-make apply MOD=doks          # apply DOKS
-make infisical-plan MOD=doks # plan using Infisical
+make plan MOD=doks                 # plan DOKS changes
+make plan MOD=k3s                  # plan k3s changes
+make apply MOD=k3s                 # apply k3s
+make infi-plan MOD=doks            # plan using Infisical
 ```
 
 ---
 
 ## Variables
 
-Variables are defined per module in `infra/droplet/variables.tf` and `infra/doks/variables.tf`. Secrets live in `secrets.tfvars` (gitignored).
+Variables are defined per module in `infra/droplet/variables.tf`, `infra/doks/variables.tf`, and `infra/k3s/variables.tf`. Secrets live in `secrets.tfvars` (gitignored).
 
 ### `infra/droplet/variables.tf`
 
@@ -154,6 +166,18 @@ Variables are defined per module in `infra/droplet/variables.tf` and `infra/doks
 | `GITHUB_PAT`       | `string` | ✓        | —       | GitHub PAT (repo + read:packages scopes)  |
 | `GITHUB_REPO_URL`  | `string` | ✓        | —       | GitOps repo URL (consumed by ArgoCD)      |
 | `DIAGRAM_API_KEY`  | `string` | ✓        | —       | API key for the diagram service           |
+
+### `infra/k3s/variables.tf`
+
+| Variable           | Type     | Required | Default                                    | Description                               |
+| ------------------ | -------- | -------- | ------------------------------------------ | ----------------------------------------- |
+| `CLOUDFLARE_TOKEN` | `string` | ✓        | —                                          | Cloudflare Tunnel token for `cloudflared` |
+| `GITHUB_USERNAME`  | `string` | —        | `notseekeru`                               | GitHub username for GHCR auth             |
+| `GITHUB_PAT`       | `string` | ✓        | —                                          | GitHub PAT (repo + read:packages scopes)  |
+| `GITHUB_REPO_URL`  | `string` | —        | `https://github.com/notseekeru/gitops.git` | GitOps repo URL                           |
+| `DIAGRAM_API_KEY`  | `string` | ✓        | —                                          | API key for the diagram service           |
+| `POSTGRES_PASSWORD`| `string` | ✓        | —                                          | Password for the local PostgreSQL         |
+| `app_yaml_path`    | `string` | —        | `../../../gitops/app.yaml`                 | Path to root ArgoCD Application manifest  |
 
 ---
 
@@ -183,9 +207,7 @@ Each server key becomes the Droplet name. All fields are optional — missing va
 
 Every Droplet is provisioned with all SSH keys from `ssh_public_keys`. Droplets use `create_before_destroy` lifecycle for safe updates.
 
----
-
-## Outputs for Droplets
+### Outputs
 
 | Name          | Description                                                            |
 | ------------- | ---------------------------------------------------------------------- |
@@ -202,7 +224,7 @@ terraform -chdir=infra/droplet output droplet_ips
 
 ## Ansible Integration
 
-Post-apply, Terraform renders `infra/droplet/inventory.tmpl` → `~/ansible/inventories/droplets.ini` (sibling directory, referenced via `../../../ansible/` from the module).
+Post-apply, Terraform renders `infra/droplet/inventory.tmpl` → `~/ansible/inventories/droplets.ini`.
 
 ```ini
 [all:vars]
@@ -227,7 +249,7 @@ ansible-playbook -i inventories/droplets.ini --limit tag_web playbooks/site.yml
 
 ---
 
-## DOKS Cluster
+## DOKS Cluster (Cloud)
 
 | Attribute     | Value                | Notes                        |
 | ------------- | -------------------- | ---------------------------- |
@@ -238,23 +260,47 @@ ansible-playbook -i inventories/droplets.ini --limit tag_web playbooks/site.yml
 
 ### Usage
 
-The kubeconfig is written to `~/kubeconfig` at apply time. The `.envrc` sets `KUBECONFIG` automatically if direnv is configured:
+The kubeconfig is written to `~/kubeconfig` at apply time:
 
 ```bash
-# Temporary (current shell)
 export KUBECONFIG=~/kubeconfig
 kubectl get nodes
-
-# Or use direnv (persistent per directory)
-echo 'export KUBECONFIG=$(pwd)/kubeconfig' >> .envrc && direnv allow
-# ^ Already set in the repo's .envrc for the flake path
 ```
+
+The `.envrc` already exports `KUBECONFIG=~/kubeconfig` on `cd` when direnv is active.
+
+### Database
+
+A DigitalOcean managed PostgreSQL 16 (`db-s-1vcpu-1gb`) is provisioned in the same VPC as the cluster. Credentials injected into `diagram-secrets`.
+
+---
+
+## K3s Module (Local)
+
+For local development or edge deployments. Runs against an existing k3s cluster — reads `~/.kube/config` directly.
+
+| Aspect | Detail |
+| ------ | ------ |
+| **No DO dependency** | All providers point at local kubeconfig |
+| **Database** | Self-hosted PostgreSQL 16 StatefulSet in `database` namespace, 5Gi PVC on `local-path` storage class |
+| **Connection string** | `postgresql://diagram:${pass}@postgres.database.svc.cluster.local:5432/diagramdb` |
+
+### Init & Apply
+
+```bash
+make init MOD=k3s
+make plan MOD=k3s   # uses secrets.tfvars
+make out MOD=k3s
+make apply MOD=k3s
+```
+
+Requires `POSTGRES_PASSWORD` in `secrets.tfvars`.
 
 ---
 
 ## Nginx Ingress Controller
 
-Installed via Helm in the `ingress-nginx` namespace. The service is configured as `ClusterIP` (internal only) — Cloudflare Tunnel routes external traffic to it.
+Installed via Helm in both `doks` and `k3s` modules, in the `ingress-nginx` namespace. Configured as `ClusterIP` — Cloudflare Tunnel handles external routing.
 
 | Setting        | Value           |
 | -------------- | --------------- |
@@ -267,24 +313,21 @@ Installed via Helm in the `ingress-nginx` namespace. The service is configured a
 
 ## ArgoCD
 
-Installed via the `argoproj/argo-helm` chart at version `7.7.0` in the `argocd` namespace, alongside the necessary Kubernetes secrets and a root Application CR.
+Installed via the `argoproj/argo-helm` chart at version `7.7.0` in the `argocd` namespace, alongside Kubernetes secrets and a root Application CR.
 
 ### Bootstrap flow
 
-1. Terraform deploys the cluster + Helm chart + secrets
+1. Terraform deploys Helm charts + secrets
 2. Terraform applies the root Application manifest via the `kubectl` provider — this is the **only** manifest applied directly
 3. That root Application tells ArgoCD to sync the rest from the GitOps repo
 
-The manifest path defaults to `../../../gitops/app.yaml` (relative to the `infra/doks` module) but can be overridden via the `app_yaml_path` variable. See `infra/doks/variables.tf`.
+The manifest path defaults to `../../../gitops/app.yaml` (relative to the module) but can be overridden via `app_yaml_path`. See `infra/k3s/variables.tf` and `infra/doks/variables.tf`.
 
-**Note:** The default `gitops/app.yaml` (resolved from the repo root as `~/gitops/app.yaml`) doesn't exist yet — create this file or a stub, or set `app_yaml_path` to an existing path.
+**Note:** The default `gitops/app.yaml` doesn't exist yet — create a stub or set `app_yaml_path` to an existing path.
 
 ### CLI setup
 
 ```bash
-# Temporary (current shell) — already handled by .envrc
-export KUBECONFIG=~/kubeconfig
-
 # Retrieve initial admin password
 kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}' | base64 -d
 
@@ -302,17 +345,14 @@ argocd account update-password --grpc-web
 
 ## Managed Database (PostgreSQL)
 
-A DigitalOcean managed PostgreSQL database (`diagram-db`) is provisioned in the same VPC as the Kubernetes cluster for low-latency private connectivity.
+Two deployment strategies depending on the module:
 
-| Setting    | Value                 |
-| ---------- | --------------------- |
-| Engine     | PostgreSQL 16         |
-| Size       | `db-s-1vcpu-1gb`      |
-| Node count | 1                     |
-| Region     | `var.default_region`  |
-| Network    | Cluster VPC (private) |
+| Module  | Database type     | Details                                                         |
+| ------- | ----------------- | --------------------------------------------------------------- |
+| `doks`  | DO Managed PG     | `db-s-1vcpu-1gb`, PostgreSQL 16, same VPC, private connectivity |
+| `k3s`   | Self-hosted PG    | StatefulSet `postgres:16-alpine`, 5Gi PVC, `database` namespace |
 
-The database user credentials and connection string are injected into Kubernetes as the `diagram-secrets` secret — consumed by application pods.
+The connection string and API key are injected into the `diagram-secrets` Kubernetes secret consumed by application pods.
 
 ---
 
@@ -353,7 +393,7 @@ direnv allow
 
 ## Security
 
-- **`secrets.tfvars`** contains your `DO_TOKEN`, Cloudflare token, GitHub PAT, and API keys — **never commit** this file.
+- **`secrets.tfvars`** contains your tokens, PATs, and API keys — **never commit** this file.
 - The DO token is consumed via `var.DO_TOKEN` (marked `sensitive = true`).
 - SSH keys are registered with Droplets at provision time — no post-provision injection.
 - GitHub PAT and credentials are written directly to Kubernetes secrets — they never leave the Terraform state.
@@ -368,9 +408,10 @@ direnv allow
 ```bash
 make destroy MOD=droplet
 make destroy MOD=doks
+make destroy MOD=k3s
 ```
 
-Each module is destroyed independently. The doks `destroy` will tear down the cluster, database, and all associated resources.
+Each module is destroyed independently.
 
 ---
 
