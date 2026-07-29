@@ -25,8 +25,8 @@ variable "DIAGRAM_API_KEY" {
   sensitive   = true
 }
 
-variable "DIAGRAM_DB_URL" {
-  description = "PostgreSQL connection string for the diagram backend"
+variable "POSTGRES_PASSWORD" {
+  description = "Password for the local PostgreSQL database"
   sensitive   = true
 }
 

@@ -42,6 +42,146 @@ resource "helm_release" "argocd" {
   timeout          = 600
 }
 
+# --- PostgreSQL (StatefulSet + PVC) ---
+
+resource "kubernetes_namespace" "database" {
+  metadata {
+    name = "database"
+  }
+}
+
+resource "kubernetes_secret" "postgres_credentials" {
+  metadata {
+    name      = "postgres-credentials"
+    namespace = kubernetes_namespace.database.metadata[0].name
+  }
+  data = {
+    password = var.POSTGRES_PASSWORD
+  }
+  type = "Opaque"
+}
+
+resource "kubernetes_stateful_set_v1" "postgres" {
+  depends_on = [kubernetes_namespace.database]
+
+  metadata {
+    name      = "postgres"
+    namespace = kubernetes_namespace.database.metadata[0].name
+  }
+  spec {
+    service_name          = "postgres"
+    replicas              = 1
+    pod_management_policy = "OrderedReady"
+    update_strategy {
+      type = "RollingUpdate"
+    }
+    selector {
+      match_labels = {
+        app = "postgres"
+      }
+    }
+    template {
+      metadata {
+        labels = {
+          app = "postgres"
+        }
+      }
+      spec {
+        security_context {
+          fs_group    = "999"
+          run_as_user = "999"
+        }
+        container {
+          name              = "postgres"
+          image             = "postgres:16-alpine"
+          image_pull_policy = "IfNotPresent"
+          port {
+            container_port = 5432
+            name           = "postgres"
+          }
+          env {
+            name  = "POSTGRES_USER"
+            value = "diagram"
+          }
+          env {
+            name = "POSTGRES_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.postgres_credentials.metadata[0].name
+                key  = "password"
+              }
+            }
+          }
+          env {
+            name  = "POSTGRES_DB"
+            value = "diagramdb"
+          }
+          volume_mount {
+            name       = "data"
+            mount_path = "/var/lib/postgresql/data"
+            sub_path   = "pgdata"
+          }
+          resources {
+            requests = {
+              memory = "256Mi"
+              cpu    = "100m"
+            }
+            limits = {
+              memory = "512Mi"
+            }
+          }
+          liveness_probe {
+            tcp_socket {
+              port = 5432
+            }
+            initial_delay_seconds = 30
+            period_seconds        = 10
+          }
+          readiness_probe {
+            exec {
+              command = ["pg_isready", "-U", "diagram", "-d", "diagramdb"]
+            }
+            initial_delay_seconds = 5
+            period_seconds        = 5
+          }
+        }
+      }
+    }
+    volume_claim_template {
+      metadata {
+        name = "data"
+      }
+      spec {
+        access_modes = ["ReadWriteOnce"]
+        resources {
+          requests = {
+            storage = "5Gi"
+          }
+        }
+        storage_class_name = "local-path"
+      }
+    }
+  }
+}
+
+resource "kubernetes_service_v1" "postgres" {
+  depends_on = [kubernetes_namespace.database]
+
+  metadata {
+    name      = "postgres"
+    namespace = kubernetes_namespace.database.metadata[0].name
+  }
+  spec {
+    selector = {
+      app = "postgres"
+    }
+    port {
+      port        = 5432
+      target_port = 5432
+    }
+  }
+}
+
 # --- Secrets ---
 
 resource "kubernetes_secret" "cloudflare_tunnel_token" {
@@ -75,13 +215,15 @@ resource "kubernetes_secret" "ghcr_credentials" {
 }
 
 resource "kubernetes_secret" "diagram_secrets" {
+  depends_on = [kubernetes_stateful_set_v1.postgres]
+
   metadata {
     name      = "diagram-secrets"
     namespace = "default"
   }
   data = {
     api_key      = var.DIAGRAM_API_KEY
-    database_url = var.DIAGRAM_DB_URL
+    database_url = "postgresql://diagram:${var.POSTGRES_PASSWORD}@postgres.database.svc.cluster.local:5432/diagramdb"
   }
   type = "Opaque"
 }
