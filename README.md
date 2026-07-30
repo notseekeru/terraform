@@ -31,11 +31,11 @@
 | Requirement            | Details                                                                                  |
 | ---------------------- | ---------------------------------------------------------------------------------------- |
 | **Terraform**          | `>= 1.0` ([install guide](https://developer.hashicorp.com/terraform/install))            |
-| **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — needed only for `doks` / `droplet`     |
+| **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — needed only for `doks` / `droplet`      |
 | **SSH Keys**           | Public keys uploaded to your DO account or provided inline via `secrets.tfvars`          |
 | **Make**               | (Optional) `make` for the workflow targets below                                         |
 | **Nix**                | (Optional) `nix develop` for an isolated dev shell — see [Nix Dev Shell](#nix-dev-shell) |
-| **direnv**             | (Optional) Auto-loads the Nix shell and `KUBECONFIG` on `cd`                             |
+| **direnv**             | (Optional) Auto-loads the Nix shell, pulls latest, and exports `KUBECONFIG` on `cd`      |
 
 ---
 
@@ -61,11 +61,11 @@ make apply MOD=droplet
 
 # For DOKS:
 # make init MOD=doks
-# make plan MOD=doks
+# make infi-plan MOD=doks
 
 # For local k3s:
 # make init MOD=k3s
-# make plan MOD=k3s
+# make infi-plan MOD=k3s
 ```
 
 ---
@@ -77,7 +77,7 @@ terraform/
 ├── infra/                   # Terraform root modules
 │   ├── droplet/             #   state #1 — standalone DO droplets
 │   │   ├── versions.tf      #   Terraform & DO + local providers
-│   │   ├── provider.tf      #   DigitalOcean provider
+│   │   ├── provider.tf      #   DO provider
 │   │   ├── variables.tf     #   DO_TOKEN, ssh_keys, servers, region defaults
 │   │   ├── main.tf          #   SSH keys, droplets, Ansible inventory
 │   │   ├── inventory.tmpl   #   Ansible inventory template (rendered post-apply)
@@ -96,7 +96,7 @@ terraform/
 ├── secrets.tfvars.example   # Template for secrets
 ├── Makefile                 # Workflow shortcuts (accepts MOD=, ENV=, SECRETS_PATH=)
 ├── flake.nix                # Nix dev shell definition
-├── .envrc                   # direnv: auto-nix + KUBECONFIG
+├── .envrc                   # direnv: auto-nix + git pull + KUBECONFIG
 ```
 
 ---
@@ -105,28 +105,28 @@ terraform/
 
 All targets accept `MOD=droplet`, `MOD=doks`, or `MOD=k3s`. The `infra/` prefix is baked into each target.
 
-| Target                 | Command                                                                                    | Description                    |
-| ---------------------- | ------------------------------------------------------------------------------------------ | ------------------------------ |
-| `make init`            | `terraform -chdir=infra/$(MOD) init`                                                       | Initialize providers & backend |
-| `make upgradeinit`     | `terraform -chdir=infra/$(MOD) init -upgrade`                                              | Upgrade initialization         |
-| `make plan`            | `terraform -chdir=infra/$(MOD) plan -var-file=../../secrets.tfvars`                        | Preview changes                |
-| `make out`             | `terraform -chdir=infra/$(MOD) plan -var-file=../../secrets.tfvars -out=tfplan`            | Save plan to binary file       |
-| `make apply`           | `terraform -chdir=infra/$(MOD) apply tfplan`                                               | Apply saved plan               |
-| `make destroy`         | `terraform -chdir=infra/$(MOD) destroy -var-file=../../secrets.tfvars`                     | Tear down resources            |
-| `make fmt`             | `terraform -chdir=infra/$(MOD) fmt`                                                        | Format all `.tf` files         |
-| `make validate`        | `terraform -chdir=infra/$(MOD) validate`                                                   | Validate configuration         |
-| `make infi-plan`       | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) plan`  | Plan via Infisical secrets     |
-| `make infi-out`        | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) plan -out=tfplan` | Plan + save via Infisical |
-| `make infi-apply`      | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) apply` | Apply via Infisical secrets    |
-| `make infi-destroy`    | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) destroy` | Destroy via Infisical         |
+| Target              | Command                                                                                               | Description                    |
+| ------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------ |
+| `make init`         | `terraform -chdir=infra/$(MOD) init`                                                                  | Initialize providers & backend |
+| `make upgradeinit`  | `terraform -chdir=infra/$(MOD) init -upgrade`                                                         | Upgrade initialization         |
+| `make plan`         | `terraform -chdir=infra/$(MOD) plan -var-file=../../secrets.tfvars`                                   | Preview changes                |
+| `make out`          | `terraform -chdir=infra/$(MOD) plan -var-file=../../secrets.tfvars -out=tfplan`                       | Save plan to binary file       |
+| `make apply`        | `terraform -chdir=infra/$(MOD) apply tfplan`                                                          | Apply saved plan               |
+| `make destroy`      | `terraform -chdir=infra/$(MOD) destroy -var-file=../../secrets.tfvars`                                | Tear down resources            |
+| `make fmt`          | `terraform -chdir=infra/$(MOD) fmt`                                                                   | Format all `.tf` files         |
+| `make validate`     | `terraform -chdir=infra/$(MOD) validate`                                                              | Validate configuration         |
+| `make infi-plan`    | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) plan`             | Plan via Infisical secrets     |
+| `make infi-out`     | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) plan -out=tfplan` | Plan + save via Infisical      |
+| `make infi-apply`   | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) apply`            | Apply via Infisical secrets    |
+| `make infi-destroy` | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) destroy`          | Destroy via Infisical          |
 
 **Variables:**
 
-| Variable       | Default      | Description                                        |
-| -------------- | ------------ | -------------------------------------------------- |
-| `MOD`          | (empty)      | Module subdirectory: `droplet`, `doks`, or `k3s`   |
-| `ENV`          | `dev`        | Infisical environment                              |
-| `SECRETS_PATH` | `/terraform` | Infisical secrets path                             |
+| Variable       | Default      | Description                                      |
+| -------------- | ------------ | ------------------------------------------------ |
+| `MOD`          | (empty)      | Module subdirectory: `droplet`, `doks`, or `k3s` |
+| `ENV`          | `dev`        | Infisical environment                            |
+| `SECRETS_PATH` | `/terraform` | Infisical secrets path                           |
 
 **Examples:**
 
@@ -166,18 +166,19 @@ Variables are defined per module in `infra/droplet/variables.tf`, `infra/doks/va
 | `GITHUB_PAT`       | `string` | ✓        | —       | GitHub PAT (repo + read:packages scopes)  |
 | `GITHUB_REPO_URL`  | `string` | ✓        | —       | GitOps repo URL (consumed by ArgoCD)      |
 | `DIAGRAM_API_KEY`  | `string` | ✓        | —       | API key for the diagram service           |
+| `app_yaml_path`    | `string` | —        | `null`  | Override path to ArgoCD Application YAML  |
 
 ### `infra/k3s/variables.tf`
 
-| Variable           | Type     | Required | Default                                    | Description                               |
-| ------------------ | -------- | -------- | ------------------------------------------ | ----------------------------------------- |
-| `CLOUDFLARE_TOKEN` | `string` | ✓        | —                                          | Cloudflare Tunnel token for `cloudflared` |
-| `GITHUB_USERNAME`  | `string` | —        | `notseekeru`                               | GitHub username for GHCR auth             |
-| `GITHUB_PAT`       | `string` | ✓        | —                                          | GitHub PAT (repo + read:packages scopes)  |
-| `GITHUB_REPO_URL`  | `string` | —        | `https://github.com/notseekeru/gitops.git` | GitOps repo URL                           |
-| `DIAGRAM_API_KEY`  | `string` | ✓        | —                                          | API key for the diagram service           |
-| `POSTGRES_PASSWORD`| `string` | ✓        | —                                          | Password for the local PostgreSQL         |
-| `app_yaml_path`    | `string` | —        | `../../../gitops/app.yaml`                 | Path to root ArgoCD Application manifest  |
+| Variable            | Type     | Required | Default                                    | Description                               |
+| ------------------- | -------- | -------- | ------------------------------------------ | ----------------------------------------- |
+| `CLOUDFLARE_TOKEN`  | `string` | ✓        | —                                          | Cloudflare Tunnel token for `cloudflared` |
+| `GITHUB_USERNAME`   | `string` | —        | `notseekeru`                               | GitHub username for GHCR auth             |
+| `GITHUB_PAT`        | `string` | ✓        | —                                          | GitHub PAT (repo + read:packages scopes)  |
+| `GITHUB_REPO_URL`   | `string` | —        | `https://github.com/notseekeru/gitops.git` | GitOps repo URL                           |
+| `DIAGRAM_API_KEY`   | `string` | ✓        | —                                          | API key for the diagram service           |
+| `POSTGRES_PASSWORD` | `string` | ✓        | —                                          | Password for the local PostgreSQL         |
+| `app_yaml_path`     | `string` | —        | `null`                                     | Override path to ArgoCD Application YAML  |
 
 ---
 
@@ -271,7 +272,7 @@ The `.envrc` already exports `KUBECONFIG=~/kubeconfig` on `cd` when direnv is ac
 
 ### Database
 
-A DigitalOcean managed PostgreSQL 16 (`db-s-1vcpu-1gb`) is provisioned in the same VPC as the cluster. Credentials injected into `diagram-secrets`.
+A DigitalOcean managed PostgreSQL 16 (`db-s-1vcpu-1gb`) is provisioned in the same VPC as the cluster. Credentials injected into `diagram-secrets` with `sslmode=no-verify` for private VPC connectivity.
 
 ---
 
@@ -279,22 +280,22 @@ A DigitalOcean managed PostgreSQL 16 (`db-s-1vcpu-1gb`) is provisioned in the sa
 
 For local development or edge deployments. Runs against an existing k3s cluster — reads `~/.kube/config` directly.
 
-| Aspect | Detail |
-| ------ | ------ |
-| **No DO dependency** | All providers point at local kubeconfig |
-| **Database** | Self-hosted PostgreSQL 16 StatefulSet in `database` namespace, 5Gi PVC on `local-path` storage class |
-| **Connection string** | `postgresql://diagram:${pass}@postgres.database.svc.cluster.local:5432/diagramdb` |
+| Aspect                | Detail                                                                                               |
+| --------------------- | ---------------------------------------------------------------------------------------------------- |
+| **No DO dependency**  | All providers point at local kubeconfig                                                              |
+| **Database**          | Self-hosted PostgreSQL 16 StatefulSet in `database` namespace, 5Gi PVC on `local-path` storage class |
+| **Connection string** | `postgresql://diagram:${pass}@postgres.database.svc.cluster.local:5432/diagramdb`                    |
 
 ### Init & Apply
 
 ```bash
 make init MOD=k3s
-make plan MOD=k3s   # uses secrets.tfvars
-make out MOD=k3s
-make apply MOD=k3s
+make infi-plan MOD=k3s   # via Infisical secrets
+make infi-out MOD=k3s
+make infi-apply MOD=k3s
 ```
 
-Requires `POSTGRES_PASSWORD` in `secrets.tfvars`.
+Requires Infisical secrets populated with `POSTGRES_PASSWORD`, `CLOUDFLARE_TOKEN`, `GITHUB_PAT`, and `DIAGRAM_API_KEY`.
 
 ---
 
@@ -321,9 +322,9 @@ Installed via the `argoproj/argo-helm` chart at version `7.7.0` in the `argocd` 
 2. Terraform applies the root Application manifest via the `kubectl` provider — this is the **only** manifest applied directly
 3. That root Application tells ArgoCD to sync the rest from the GitOps repo
 
-The manifest path defaults to `../../../gitops/app.yaml` (relative to the module) but can be overridden via `app_yaml_path`. See `infra/k3s/variables.tf` and `infra/doks/variables.tf`.
+The manifest path defaults to `${path.module}/../../../gitops/app.yaml` (resolved at plan time) but can be overridden via `app_yaml_path`. See `infra/k3s/variables.tf` and `infra/doks/variables.tf`.
 
-**Note:** The default `gitops/app.yaml` doesn't exist yet — create a stub or set `app_yaml_path` to an existing path.
+**Note:** Default path is `${path.module}/../../../gitops/app.yaml` — resolves to `~/gitops/app.yaml`. Override via `app_yaml_path` if needed.
 
 ### CLI setup
 
@@ -347,10 +348,10 @@ argocd account update-password --grpc-web
 
 Two deployment strategies depending on the module:
 
-| Module  | Database type     | Details                                                         |
-| ------- | ----------------- | --------------------------------------------------------------- |
-| `doks`  | DO Managed PG     | `db-s-1vcpu-1gb`, PostgreSQL 16, same VPC, private connectivity |
-| `k3s`   | Self-hosted PG    | StatefulSet `postgres:16-alpine`, 5Gi PVC, `database` namespace |
+| Module | Database type  | Details                                                         |
+| ------ | -------------- | --------------------------------------------------------------- |
+| `doks` | DO Managed PG  | `db-s-1vcpu-1gb`, PostgreSQL 16, same VPC, private connectivity |
+| `k3s`  | Self-hosted PG | StatefulSet `postgres:16-alpine`, 5Gi PVC, `database` namespace |
 
 The connection string and API key are injected into the `diagram-secrets` Kubernetes secret consumed by application pods.
 
@@ -360,12 +361,13 @@ The connection string and API key are injected into the `diagram-secrets` Kubern
 
 The following secrets are created automatically by Terraform (no manual `kubectl create secret` needed):
 
-| Secret Name         | Namespace | Purpose                                      |
-| ------------------- | --------- | -------------------------------------------- |
-| `cloudflared-token` | `default` | Cloudflare Tunnel token for `cloudflared`    |
-| `ghcr-login`        | `default` | Docker registry credentials for GHCR         |
-| `diagram-secrets`   | `default` | API key + PostgreSQL connection string       |
-| `repo-secret`       | `argocd`  | ArgoCD repository credentials (private repo) |
+| Secret Name            | Namespace  | Purpose                                      |
+| ---------------------- | ---------- | -------------------------------------------- |
+| `cloudflared-token`    | `default`  | Cloudflare Tunnel token for `cloudflared`    |
+| `ghcr-login`           | `default`  | Docker registry credentials for GHCR         |
+| `diagram-secrets`      | `default`  | API key + PostgreSQL connection string       |
+| `repo-secret`          | `argocd`   | ArgoCD repository credentials (private repo) |
+| `postgres-credentials` | `database` | PostgreSQL password (k3s only)               |
 
 ---
 
@@ -398,6 +400,7 @@ direnv allow
 - SSH keys are registered with Droplets at provision time — no post-provision injection.
 - GitHub PAT and credentials are written directly to Kubernetes secrets — they never leave the Terraform state.
 - `secrets.tfvars`, `*.tfvars`, and `kubeconfig` are all in `.gitignore`.
+- `secrets.tfvars.example` is safe to commit — it has dummy/empty values for all secrets.
 - Consider using a vault or environment variables instead of plain-text `.tfvars` for production setups.
 - Consider GitLeaks + pre-commit hooks to prevent accidental secret commits.
 
