@@ -87,9 +87,6 @@ resource "kubernetes_stateful_set_v1" "postgres" {
         }
       }
       spec {
-        # AI HERE: removed explicit fs_group/run_as_user — postgres:16-alpine
-        # already runs as uid 999, and local-path provisioner handles perms natively.
-        # Upgrade path: retain for DOKS managed PG or NFS-backed PVs that need fs_group.
         container {
           name              = "postgres"
           image             = "postgres:16-alpine"

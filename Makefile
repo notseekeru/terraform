@@ -2,7 +2,7 @@ MOD ?=
 ENV ?= dev
 SECRETS_PATH ?= /terraform
 
-.PHONY: init upgradeinit plan out apply destroy fmt validate infi-plan infi-apply infi-destroy
+.PHONY: init upgradeinit plan out apply destroy fmt validate infi-plan infi-apply infi-destroy dump
 
 init:
 	terraform -chdir=infra/$(MOD) init
@@ -43,3 +43,10 @@ infi-apply:
 infi-destroy:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
 		terraform -chdir=infra/$(MOD) destroy
+
+# Dump the diagramdb from the local k3s postgres to ~/backups
+dump:
+	@mkdir -p ~/backups
+	@kubectl exec -n database svc/postgres -- pg_dump -U diagram -d diagramdb \
+		| gzip > ~/backups/diagramdb-$$(date +%F-%H%M).sql.gz
+	@echo "Backup saved: ~/backups/diagramdb-$$(date +%F-%H%M).sql.gz"
