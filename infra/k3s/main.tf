@@ -87,6 +87,8 @@ resource "kubernetes_stateful_set_v1" "postgres" {
         }
       }
       spec {
+        # No security_context override: postgres:16-alpine defaults to uid 999.
+        # Explicit fs_group/run_as_user caused chmod denial on local-path PV mounts.
         container {
           name              = "postgres"
           image             = "postgres:16-alpine"
