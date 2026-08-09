@@ -10,6 +10,7 @@
 - [Prerequisites](#prerequisites)
 - [Quickstart](#quickstart)
 - [Project Layout](#project-layout)
+- [State Management](#state-management)
 - [Makefile Workflow](#makefile-workflow)
 - [Variables](#variables)
 - [Droplets](#droplets)
@@ -36,6 +37,32 @@
 | **Make**               | (Optional) `make` for the workflow targets below                                         |
 | **Nix**                | (Optional) `nix develop` for an isolated dev shell — see [Nix Dev Shell](#nix-dev-shell) |
 | **direnv**             | (Optional) Auto-loads the Nix shell, pulls latest, and exports `KUBECONFIG` on `cd`      |
+
+---
+
+## State Management
+
+> **⚠️ Remote state is not yet implemented.**
+
+State is currently stored **locally** (`terraform.tfstate` per module under `infra/<MOD>/`). We have **not** implemented blob storage for `tfstate` yet — no budget for it right now, and the owner (solo operator) doesn't care enough since it's not the primary scope for the project.
+
+**Current setup**
+
+| Module   | State location           | Backend    |
+| -------- | ------------------------ | ---------- |
+| `droplet`| `infra/droplet/terraform.tfstate` | local   |
+| `doks`   | `infra/doks/terraform.tfstate`    | local   |
+| `k3s`    | `infra/k3s/terraform.tfstate`     | local   |
+
+**Implications / caveats**
+
+- Local state means **no native locking** — concurrent runs against the same module are not guarded.
+- Blob/remote backend is a **known, acknowledged gap**, deliberately deferred.
+- Recovery depends on the `.tfstate` files being present/backed up.
+
+**Planned upgrade path**
+
+Introduce a remote backend (e.g. DigitalOcean Spaces / `backends/s3`-compatible) with a per-module prefix, plus `terraform init -migrate-state`. Out of scope until budget/priority warrants it.
 
 ---
 
