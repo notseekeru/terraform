@@ -46,11 +46,11 @@ State is stored in a **Cloudflare R2 bucket** (`s3` backend, S3-compatible) — 
 
 **Storage layout** in the `terraform-state` R2 bucket:
 
-| Module   | State key                     | Backend |
-| -------- | ----------------------------- | ------- |
-| `droplet`| `terraform/droplet/terraform.tfstate` | s3   |
-| `doks`   | `terraform/doks/terraform.tfstate`    | s3   |
-| `k3s`    | `terraform/k3s/terraform.tfstate`     | s3   |
+| Module    | State key                             | Backend |
+| --------- | ------------------------------------- | ------- |
+| `droplet` | `terraform/droplet/terraform.tfstate` | s3      |
+| `doks`    | `terraform/doks/terraform.tfstate`    | s3      |
+| `k3s`     | `terraform/k3s/terraform.tfstate`     | s3      |
 
 **Backend config** lives per module in `versions.tf`. The R2 bucket name and account id are injected from Infisical (`R2_BUCKET`, `R2_ACCOUNT_ID`) via `-backend-config` at `init` time; the R2 credentials are injected by Infisical as `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` env vars, which the s3 backend picks up natively (no explicit `-backend-config` needed for creds).
 
@@ -131,17 +131,17 @@ terraform/
 
 All targets accept `MOD=droplet`, `MOD=doks`, or `MOD=k3s`. The `infra/` prefix and Infisical secret flow are baked into each target. Sensitive vars (incl. the R2 credentials backing state) come from `infisical run`.
 
-| Target            | Command                                                                                  | Description                                        |
-| ----------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `make init`       | `infisical run -- terraform -chdir=infra/$(MOD) init -backend-config="..."`               | Init providers + bind R2 backend        |
-| `make upgradeinit`| `infisical run -- terraform -chdir=infra/$(MOD) init -upgrade -backend-config="..."`     | Upgrade providers / re-bind backend                |
-| `make plan`       | `infisical run -- terraform -chdir=infra/$(MOD) plan`                                    | Preview changes                                    |
-| `make apply`      | `infisical run -- terraform -chdir=infra/$(MOD) apply`                                   | Apply changes                                      |
-| `make destroy`    | `infisical run -- terraform -chdir=infra/$(MOD) destroy`                                 | Tear down resources                                |
-| `make fmt`        | `terraform -chdir=infra/$(MOD) fmt`                                                       | Format all `.tf` files                            |
-| `make validate`   | `terraform -chdir=infra/$(MOD) validate`                                                  | Validate configuration                             |
-| `make migrate`    | `infisical run -- terraform -chdir=infra/$(MOD) init -migrate-state -backend-config="..."` | One-time: push local state to R2                  |
-| `make dump`       | `kubectl exec ... pg_dump \| gzip > ~/backups/`                                          | Backup diagramdb from local k3s postgres           |
+| Target             | Command                                                                                    | Description                              |
+| ------------------ | ------------------------------------------------------------------------------------------ | ---------------------------------------- |
+| `make init`        | `infisical run -- terraform -chdir=infra/$(MOD) init -backend-config="..."`                | Init providers + bind R2 backend         |
+| `make upgradeinit` | `infisical run -- terraform -chdir=infra/$(MOD) init -upgrade -backend-config="..."`       | Upgrade providers / re-bind backend      |
+| `make plan`        | `infisical run -- terraform -chdir=infra/$(MOD) plan`                                      | Preview changes                          |
+| `make apply`       | `infisical run -- terraform -chdir=infra/$(MOD) apply`                                     | Apply changes                            |
+| `make destroy`     | `infisical run -- terraform -chdir=infra/$(MOD) destroy`                                   | Tear down resources                      |
+| `make fmt`         | `terraform -chdir=infra/$(MOD) fmt`                                                        | Format all `.tf` files                   |
+| `make validate`    | `terraform -chdir=infra/$(MOD) validate`                                                   | Validate configuration                   |
+| `make migrate`     | `infisical run -- terraform -chdir=infra/$(MOD) init -migrate-state -backend-config="..."` | One-time: push local state to R2         |
+| `make dump`        | `kubectl exec ... pg_dump \| gzip > ~/backups/`                                            | Backup diagramdb from local k3s postgres |
 
 **Variables:**
 
@@ -169,14 +169,14 @@ Variables are defined per module in `infra/droplet/variables.tf`, `infra/doks/va
 
 ### `infra/droplet/variables.tf`
 
-| Variable          | Type               | Required | Default         | Description                                    |
-| ----------------- | ------------------ | -------- | --------------- | ---------------------------------------------- |
-| `DO_TOKEN`        | `string`           | ✓        | —               | DigitalOcean PAT (write scope)                 |
-| `ssh_public_keys` | `map(string)`      | ✓        | —               | SSH key name → public key material             |
-| `default_region`  | `string`           | —        | `sgp1`          | Default region for all resources               |
-| `default_size`    | `string`           | —        | `s-1vcpu-1gb`   | Default Droplet size                           |
-| `default_image`   | `string`           | —        | `debian-13-x64` | Default Droplet image                          |
-| `servers`         | `map(object(...))` | —        | `{}`            | Server definitions — see [Droplets](#droplets) |
+| Variable         | Type               | Required | Default         | Description                                               |
+| ---------------- | ------------------ | -------- | --------------- | --------------------------------------------------------- |
+| `DO_TOKEN`       | `string`           | ✓        | —               | DigitalOcean PAT (write scope)                            |
+| `SSH_PUBLIC_KEY` | `string`           | ✓        | —               | Single SSH public key (flows via `TF_VAR_SSH_PUBLIC_KEY`) |
+| `default_region` | `string`           | —        | `sgp1`          | Default region for all resources                          |
+| `default_size`   | `string`           | —        | `s-1vcpu-1gb`   | Default Droplet size                                      |
+| `default_image`  | `string`           | —        | `debian-13-x64` | Default Droplet image                                     |
+| `servers`        | `map(object(...))` | —        | `{}`            | Server definitions — see [Droplets](#droplets)            |
 
 ### `infra/doks/variables.tf`
 
@@ -229,7 +229,7 @@ servers = {
 
 Each server key becomes the Droplet name. All fields are optional — missing values fall back to the defaults above. The `tags` field is augmented with the `"vm"` tag automatically.
 
-Every Droplet is provisioned with all SSH keys from `ssh_public_keys`. Droplets use `create_before_destroy` lifecycle for safe updates.
+Every Droplet is provisioned with the single `SSH_PUBLIC_KEY`. Droplets use `create_before_destroy` lifecycle for safe updates.
 
 ### Outputs
 
