@@ -1,7 +1,7 @@
 # Terraform — Personal Cloud Infrastructure
 
 > Infrastructure-as-Code for my personal cloud environment.  
-> **Provider:** DigitalOcean · **Provisioner:** Terraform · **Orchestrator:** ArgoCD
+> **Providers:** DigitalOcean / Cloudflare R2 · **Provisioner:** Terraform · **Orchestrator:** ArgoCD
 
 ---
 
@@ -52,7 +52,7 @@ State is stored in a **Cloudflare R2 bucket** (`s3` backend, S3-compatible) — 
 | `doks`   | `terraform/doks/terraform.tfstate`    | s3   |
 | `k3s`    | `terraform/k3s/terraform.tfstate`     | s3   |
 
-**Backend config** lives per module in `versions.tf`; the R2 bucket, account id, and `AWS_*` credentials are injected from Infisical (unprefixed `R2_BUCKET`, `R2_ACCOUNT_ID`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) via `-backend-config` at `init` time.
+**Backend config** lives per module in `versions.tf`. The R2 bucket name and account id are injected from Infisical (`R2_BUCKET`, `R2_ACCOUNT_ID`) via `-backend-config` at `init` time; the R2 credentials are injected by Infisical as `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` env vars, which the s3 backend picks up natively (no explicit `-backend-config` needed for creds).
 
 **First-time setup** (per module, or after changing backend config):
 
@@ -76,9 +76,8 @@ The backend binding is cached in `infra/<MOD>/.terraform/terraform.tfstate` afte
 # 1. Clone & enter
 cd terraform
 
-# 2. Copy and populate secrets
-cp secrets.tfvars.example secrets.tfvars
-# Edit secrets.tfvars — add your DO_TOKEN, SSH public key(s), and other secrets
+# 2. Secrets come from Infisical (see .envrc / SECRETS_PATH=... in the Makefile).
+#    There is no secrets.tfvars-driven flow — all tfvars-style inputs flow via infisical run.
 
 # 3. Initialize a module (droplet, doks, or k3s) — pulls providers + binds R2 backend
 make init MOD=k3s
@@ -119,8 +118,8 @@ terraform/
 │       ├── provider.tf      #   providers read from ~/.kube/config
 │       ├── variables.tf     #   CLOUDFLARE_TOKEN, GITHUB_*, DIAGRAM_API_KEY, POSTGRES_PASSWORD
 │       └── main.tf          #   helm releases → self-hosted PG StatefulSet → secrets → argocd app
-├── secrets.tfvars           # Sensitive variables (gitignored)
-├── secrets.tfvars.example   # Template for secrets
+├── secrets.tfvars           # Legacy gitignored file (not the live secret source)
+├── secrets.tfvars.example   # Dummy template, safe to commit — documents expected vars
 ├── Makefile                 # Workflow shortcuts (accepts MOD=, ENV=, SECRETS_PATH=)
 ├── flake.nix                # Nix dev shell definition
 ├── .envrc                   # direnv: auto-nix + git pull + KUBECONFIG
@@ -134,7 +133,7 @@ All targets accept `MOD=droplet`, `MOD=doks`, or `MOD=k3s`. The `infra/` prefix 
 
 | Target            | Command                                                                                  | Description                                        |
 | ----------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `make init`       | `infisical run -- terraform -chdir=infra/$(MOD) init -backend-config="..."`               | Bootstrap AWS + providers + bind R2 backend        |
+| `make init`       | `infisical run -- terraform -chdir=infra/$(MOD) init -backend-config="..."`               | Init providers + bind R2 backend        |
 | `make upgradeinit`| `infisical run -- terraform -chdir=infra/$(MOD) init -upgrade -backend-config="..."`     | Upgrade providers / re-bind backend                |
 | `make plan`       | `infisical run -- terraform -chdir=infra/$(MOD) plan`                                    | Preview changes                                    |
 | `make apply`      | `infisical run -- terraform -chdir=infra/$(MOD) apply`                                   | Apply changes                                      |
@@ -166,7 +165,7 @@ make migrate MOD=k3s    # one-time local→R2 state copy
 
 ## Variables
 
-Variables are defined per module in `infra/droplet/variables.tf`, `infra/doks/variables.tf`, and `infra/k3s/variables.tf`. Secrets live in `secrets.tfvars` (gitignored).
+Variables are defined per module in `infra/droplet/variables.tf`, `infra/doks/variables.tf`, and `infra/k3s/variables.tf`. Secrets are injected from Infisical (the `infisical run` wrapper in the Makefile) and mapped to Terraform input vars as `TF_VAR_*`. A `secrets.tfvars.example` template is kept for reference, but it is not the live secret source.
 
 ### `infra/droplet/variables.tf`
 
@@ -208,7 +207,7 @@ Variables are defined per module in `infra/droplet/variables.tf`, `infra/doks/va
 
 ## Droplets
 
-Add servers by extending the `servers` map in `secrets.tfvars`:
+Add servers by setting the `servers` map variable (e.g. passed via `-var` for the droplet module, or populated into Infisical as `TF_VAR_servers`). Example:
 
 ```hcl
 servers = {
@@ -426,13 +425,13 @@ direnv allow
 
 ## Security
 
-- **`secrets.tfvars`** contains your tokens, PATs, and API keys — **never commit** this file.
+- **Secrets are managed in Infisical**, injected via `infisical run` — they never sit in a committed `.tfvars` file. The `secrets.tfvars.example` template is dummy/empty and safe to commit.
 - The DO token is consumed via `var.DO_TOKEN` (marked `sensitive = true`).
 - SSH keys are registered with Droplets at provision time — no post-provision injection.
 - GitHub PAT and credentials are written directly to Kubernetes secrets — they never leave the Terraform state.
-- `secrets.tfvars`, `*.tfvars`, and `kubeconfig` are all in `.gitignore`.
+- R2 credentials for the state backend come from env (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) and are never baked into state files.
+- `secrets.tfvars`, `*.tfvars`, `kubeconfig`, and `.infisical.json` are all in `.gitignore`.
 - `secrets.tfvars.example` is safe to commit — it has dummy/empty values for all secrets.
-- Consider using a vault or environment variables instead of plain-text `.tfvars` for production setups.
 - Consider GitLeaks + pre-commit hooks to prevent accidental secret commits.
 
 ---
