@@ -1,11 +1,10 @@
 resource "digitalocean_ssh_key" "this" {
-  for_each   = var.ssh_public_keys
-  name       = each.key
-  public_key = each.value
+  name       = "default"
+  public_key = var.SSH_PUBLIC_KEY
 }
 
 locals {
-  all_ssh_key_ids = [for k in digitalocean_ssh_key.this : k.id]
+  all_ssh_key_ids = [digitalocean_ssh_key.this.id]
 }
 
 resource "digitalocean_droplet" "this" {

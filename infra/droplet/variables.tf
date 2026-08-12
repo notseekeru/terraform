@@ -3,8 +3,9 @@ variable "DO_TOKEN" {
   sensitive = true
 }
 
-variable "ssh_public_keys" {
-  type = map(string)
+variable "SSH_PUBLIC_KEY" {
+  type      = string
+  sensitive = true
 }
 
 variable "default_region" {
