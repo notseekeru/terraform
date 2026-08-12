@@ -42,27 +42,31 @@
 
 ## State Management
 
-> **⚠️ Remote state is not yet implemented.**
+State is stored in a **Cloudflare R2 bucket** (`s3` backend, S3-compatible) — no local `terraform.tfstate` needed. Terraform reads/writes it remotely with a per-module key.
 
-State is currently stored **locally** (`terraform.tfstate` per module under `infra/<MOD>/`). We have **not** implemented blob storage for `tfstate` yet — no budget for it right now, and the owner (solo operator) doesn't care enough since it's not the primary scope for the project.
+**Storage layout** in the `terraform-state` R2 bucket:
 
-**Current setup**
+| Module   | State key                     | Backend |
+| -------- | ----------------------------- | ------- |
+| `droplet`| `terraform/droplet/terraform.tfstate` | s3   |
+| `doks`   | `terraform/doks/terraform.tfstate`    | s3   |
+| `k3s`    | `terraform/k3s/terraform.tfstate`     | s3   |
 
-| Module   | State location           | Backend    |
-| -------- | ------------------------ | ---------- |
-| `droplet`| `infra/droplet/terraform.tfstate` | local   |
-| `doks`   | `infra/doks/terraform.tfstate`    | local   |
-| `k3s`    | `infra/k3s/terraform.tfstate`     | local   |
+**Backend config** lives per module in `versions.tf`; the R2 bucket, account id, and `AWS_*` credentials are injected from Infisical (unprefixed `R2_BUCKET`, `R2_ACCOUNT_ID`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) via `-backend-config` at `init` time.
 
-**Implications / caveats**
+**First-time setup** (per module, or after changing backend config):
 
-- Local state means **no native locking** — concurrent runs against the same module are not guarded.
-- Blob/remote backend is a **known, acknowledged gap**, deliberately deferred.
-- Recovery depends on the `.tfstate` files being present/backed up.
+```bash
+make migrate MOD=k3s    # e.g. — pushes local state to R2 (type "yes" to copy)
+```
 
-**Planned upgrade path**
+The backend binding is cached in `infra/<MOD>/.terraform/terraform.tfstate` after `init`, so subsequent `plan`/`apply`/`destroy` pick it up automatically.
 
-Introduce a remote backend (e.g. DigitalOcean Spaces / `backends/s3`-compatible) with a per-module prefix, plus `terraform init -migrate-state`. Out of scope until budget/priority warrants it.
+**Caveats**
+
+- Remote state gives Terraform **native locking** — concurrent runs against a module are guarded.
+- Credentials are never written to the state files (they come from env at run time).
+- `infra/<MOD>/terraform.tfstate*` local files are gitignored; after migration the primary state is in R2 only.
 
 ---
 
@@ -76,23 +80,19 @@ cd terraform
 cp secrets.tfvars.example secrets.tfvars
 # Edit secrets.tfvars — add your DO_TOKEN, SSH public key(s), and other secrets
 
-# 3. Initialize a module (droplet, doks, or k3s)
-make init MOD=droplet
+# 3. Initialize a module (droplet, doks, or k3s) — pulls providers + binds R2 backend
+make init MOD=k3s
 
 # 4. Preview
-make plan MOD=droplet
+make plan MOD=k3s
 
 # 5. Apply
-make out MOD=droplet
-make apply MOD=droplet
+make apply MOD=k3s
 
-# For DOKS:
+# For DOKS / Droplets:
 # make init MOD=doks
-# make infi-plan MOD=doks
-
-# For local k3s:
-# make init MOD=k3s
-# make infi-plan MOD=k3s
+# make plan MOD=doks
+# make apply MOD=doks
 ```
 
 ---
@@ -130,22 +130,19 @@ terraform/
 
 ## Makefile Workflow
 
-All targets accept `MOD=droplet`, `MOD=doks`, or `MOD=k3s`. The `infra/` prefix is baked into each target.
+All targets accept `MOD=droplet`, `MOD=doks`, or `MOD=k3s`. The `infra/` prefix and Infisical secret flow are baked into each target. Sensitive vars (incl. the R2 credentials backing state) come from `infisical run`.
 
-| Target              | Command                                                                                               | Description                    |
-| ------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------ |
-| `make init`         | `terraform -chdir=infra/$(MOD) init`                                                                  | Initialize providers & backend |
-| `make upgradeinit`  | `terraform -chdir=infra/$(MOD) init -upgrade`                                                         | Upgrade initialization         |
-| `make plan`         | `terraform -chdir=infra/$(MOD) plan -var-file=../../secrets.tfvars`                                   | Preview changes                |
-| `make out`          | `terraform -chdir=infra/$(MOD) plan -var-file=../../secrets.tfvars -out=tfplan`                       | Save plan to binary file       |
-| `make apply`        | `terraform -chdir=infra/$(MOD) apply tfplan`                                                          | Apply saved plan               |
-| `make destroy`      | `terraform -chdir=infra/$(MOD) destroy -var-file=../../secrets.tfvars`                                | Tear down resources            |
-| `make fmt`          | `terraform -chdir=infra/$(MOD) fmt`                                                                   | Format all `.tf` files         |
-| `make validate`     | `terraform -chdir=infra/$(MOD) validate`                                                              | Validate configuration         |
-| `make infi-plan`    | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) plan`             | Plan via Infisical secrets     |
-| `make infi-out`     | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) plan -out=tfplan` | Plan + save via Infisical      |
-| `make infi-apply`   | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) apply`            | Apply via Infisical secrets    |
-| `make infi-destroy` | `infisical run --path $(SECRETS_PATH) --env $(ENV) -- terraform -chdir=infra/$(MOD) destroy`          | Destroy via Infisical          |
+| Target            | Command                                                                                  | Description                                        |
+| ----------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `make init`       | `infisical run -- terraform -chdir=infra/$(MOD) init -backend-config="..."`               | Bootstrap AWS + providers + bind R2 backend        |
+| `make upgradeinit`| `infisical run -- terraform -chdir=infra/$(MOD) init -upgrade -backend-config="..."`     | Upgrade providers / re-bind backend                |
+| `make plan`       | `infisical run -- terraform -chdir=infra/$(MOD) plan`                                    | Preview changes                                    |
+| `make apply`      | `infisical run -- terraform -chdir=infra/$(MOD) apply`                                   | Apply changes                                      |
+| `make destroy`    | `infisical run -- terraform -chdir=infra/$(MOD) destroy`                                 | Tear down resources                                |
+| `make fmt`        | `terraform -chdir=infra/$(MOD) fmt`                                                       | Format all `.tf` files                            |
+| `make validate`   | `terraform -chdir=infra/$(MOD) validate`                                                  | Validate configuration                             |
+| `make migrate`    | `infisical run -- terraform -chdir=infra/$(MOD) init -migrate-state -backend-config="..."` | One-time: push local state to R2                  |
+| `make dump`       | `kubectl exec ... pg_dump \| gzip > ~/backups/`                                          | Backup diagramdb from local k3s postgres           |
 
 **Variables:**
 
@@ -158,11 +155,11 @@ All targets accept `MOD=droplet`, `MOD=doks`, or `MOD=k3s`. The `infra/` prefix 
 **Examples:**
 
 ```bash
-make plan                          # plan droplet changes (default module)
-make plan MOD=doks                 # plan DOKS changes
-make plan MOD=k3s                  # plan k3s changes
-make apply MOD=k3s                 # apply k3s
-make infi-plan MOD=doks            # plan using Infisical
+make init MOD=k3s       # first time for a module
+make plan MOD=k3s       # preview
+make apply MOD=k3s      # apply
+make plan MOD=doks      # another module
+make migrate MOD=k3s    # one-time local→R2 state copy
 ```
 
 ---
@@ -317,12 +314,19 @@ For local development or edge deployments. Runs against an existing k3s cluster 
 
 ```bash
 make init MOD=k3s
-make infi-plan MOD=k3s   # via Infisical secrets
-make infi-out MOD=k3s
-make infi-apply MOD=k3s
+make plan MOD=k3s
+make apply MOD=k3s
 ```
 
 Requires Infisical secrets populated with `POSTGRES_PASSWORD`, `CLOUDFLARE_TOKEN`, `GITHUB_PAT`, and `DIAGRAM_API_KEY`.
+
+### DB backup
+
+Before any destructive operation (`make destroy MOD=k3s`), dump the database:
+
+```bash
+make dump   # → ~/backups/diagramdb-<timestamp>.sql.gz
+```
 
 ---
 
