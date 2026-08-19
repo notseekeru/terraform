@@ -29,14 +29,15 @@
 
 ## Prerequisites
 
-| Requirement            | Details                                                                                  |
-| ---------------------- | ---------------------------------------------------------------------------------------- |
-| **Terraform**          | `>= 1.0` ([install guide](https://developer.hashicorp.com/terraform/install))            |
-| **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — needed only for `doks` / `droplet`      |
-| **SSH Keys**           | Public keys uploaded to your DO account or provided inline via `secrets.tfvars`          |
-| **Make**               | (Optional) `make` for the workflow targets below                                         |
-| **Nix**                | (Optional) `nix develop` for an isolated dev shell — see [Nix Dev Shell](#nix-dev-shell) |
-| **direnv**             | (Optional) Auto-loads the Nix shell, pulls latest, and exports `KUBECONFIG` on `cd`      |
+| Requirement            | Details                                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------------------- |
+| **Terraform**          | `>= 1.0` ([install guide](https://developer.hashicorp.com/terraform/install))                |
+| **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — needed only for `doks` / `droplet`          |
+| **SSH Keys**           | Public keys uploaded to your DO account or provided inline via `secrets.tfvars`              |
+| **k3s**                | k3s module needs the appropriate software for running the cluster locally needed — for `k3s` |
+| **Make**               | (Optional) `make` for the workflow targets below                                             |
+| **Nix**                | (Optional) `nix develop` for an isolated dev shell — see [Nix Dev Shell](#nix-dev-shell)     |
+| **direnv**             | (Optional) Auto-loads the Nix shell, pulls latest, and exports `KUBECONFIG` on `cd`          |
 
 ---
 
@@ -80,6 +81,7 @@ cd terraform
 #    There is no secrets.tfvars-driven flow — all tfvars-style inputs flow via infisical run.
 
 # 3. Initialize a module (droplet, doks, or k3s) — pulls providers + binds R2 backend
+#    If you need k3s then you need to install k3s software
 make init MOD=k3s
 
 # 4. Preview
