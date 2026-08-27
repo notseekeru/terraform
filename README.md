@@ -5,29 +5,6 @@
 
 ---
 
-## Table of Contents
-
-- [Prerequisites](#prerequisites)
-- [Quickstart](#quickstart)
-- [Project Layout](#project-layout)
-- [State Management](#state-management)
-- [Makefile Workflow](#makefile-workflow)
-- [Variables](#variables)
-- [Droplets](#droplets)
-- [Ansible Integration](#ansible-integration)
-- [DOKS Cluster (Cloud)](#doks-cluster-cloud)
-- [K3s Module (Local)](#k3s-module-local)
-- [AWS Module (Cloud)](#aws-module-cloud)
-- [Nginx Ingress Controller](#nginx-ingress-controller)
-- [ArgoCD](#argocd)
-- [Managed Database (PostgreSQL)](#managed-database-postgresql)
-- [Kubernetes Secrets](#kubernetes-secrets)
-- [Nix Dev Shell](#nix-dev-shell)
-- [Security](#security)
-- [Cleanup](#cleanup)
-
----
-
 ## Prerequisites
 
 | Requirement            | Details                                                                                      |
@@ -35,7 +12,7 @@
 | **Terraform**          | `>= 1.0` ([install guide](https://developer.hashicorp.com/terraform/install))                |
 | **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — needed only for `doks` / `droplet`          |
 | **SSH Keys**           | Public keys uploaded to your DO account or provided inline via `secrets.tfvars`              |
-| **k3s**                | k3s module needs the appropriate software for running the cluster locally needed — for `k3s` |
+| **k3s**                | An existing k3s cluster with `~/.kube/config` — see [K3s Module](#k3s-module-local)
 | **Make**               | (Optional) `make` for the workflow targets below                                             |
 | **Nix**                | (Optional) `nix develop` for an isolated dev shell — see [Nix Dev Shell](#nix-dev-shell)     |
 | **direnv**             | (Optional) Auto-loads the Nix shell, pulls latest, and exports `KUBECONFIG` on `cd`          |
@@ -138,7 +115,6 @@ terraform/
 │       ├── secrets.tf       #   SSM parameters
 │       └── outputs.tf       #   ALB DNS + CloudFront domain
 ├── secrets.tfvars           # Legacy gitignored file (not the live secret source)
-├── secrets.tfvars.example   # Dummy template, safe to commit — documents expected vars
 ├── Makefile                 # Workflow shortcuts (accepts MOD=, ENV=, SECRETS_PATH=)
 ├── flake.nix                # Nix dev shell definition
 ├── .envrc                   # direnv: auto-nix + git pull + KUBECONFIG
@@ -355,20 +331,12 @@ served via CloudFront. Provisioning targets a real AWS account; state still live
 
 ### Credential split
 
-Importantly, this module's **real AWS** credentials use the native `AWS_ACCESS_KEY_ID` /
-`AWS_SECRET_ACCESS_KEY` env vars, which are distinct from the R2 state-backend creds
-(`TF_VAR_R2_*` + `AWS_ENDPOINT_URL_S3`). If these ever collide you get
-`InvalidAccessKeyId` — see `docs/R2-backend-credential-conflict.md`.
+Real AWS creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) are distinct from the R2 state-backend pair (`TF_VAR_R2_*`). Collision ⇒ `InvalidAccessKeyId` — see [State Management](#state-management) and `docs/R2-backend-credential-conflict.md`.
 
-### Init & Apply
-
-```bash
-make init MOD=aws
-make plan MOD=aws
-make apply MOD=aws
-```
+### Credentials required
 
 Requires Infisical secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (AWS account) and
+
 the `TF_VAR_R2_*` backend pair. See `AWS.md` for the full architecture.
 
 ---
@@ -397,8 +365,6 @@ Installed via the `argoproj/argo-helm` chart at version `7.7.0` in the `argocd` 
 
 The manifest path defaults to `${path.module}/../../../gitops/app.yaml` (resolved at plan time) but can be overridden via `app_yaml_path`. See `infra/k3s/variables.tf` and `infra/doks/variables.tf`.
 
-**Note:** Default path is `${path.module}/../../../gitops/app.yaml` — resolves to `~/gitops/app.yaml`. Override via `app_yaml_path` if needed.
-
 ### CLI setup
 
 ```bash
@@ -419,13 +385,7 @@ argocd account update-password --grpc-web
 
 ## Managed Database (PostgreSQL)
 
-Two deployment strategies depending on the module:
-
-| Module | Database type  | Details                                                         |
-| ------ | -------------- | --------------------------------------------------------------- |
-| `doks` | DO Managed PG  | `db-s-1vcpu-1gb`, PostgreSQL 16, same VPC, private connectivity |
-| `k3s`  | Self-hosted PG | StatefulSet `postgres:16-alpine`, 5Gi PVC, `database` namespace |
-
+Database strategy varies by module: **DO Managed PG** for `doks` (see [DOKS Cluster](#doks-cluster-cloud)), **self-hosted StatefulSet** for `k3s` (see [K3s Module](#k3s-module-local)).
 The connection string and API key are injected into the `diagram-secrets` Kubernetes secret consumed by application pods.
 
 ---
