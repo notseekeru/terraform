@@ -6,7 +6,7 @@ This document outlines the architecture, configuration strategy, and file struct
 
 ## 1. High-Level Architecture Diagram
 
-```
+```text
                                 [ Internet User ]
                                         │
                                         ▼ CNAME (DNS handled by Cloudflare)
@@ -40,47 +40,56 @@ This document outlines the architecture, configuration strategy, and file struct
     │   │ (Single-AZ - db.t3.micro) │                │    (Prereq for RDS)       │ │
     │   └───────────────────────────┘                └───────────────────────────┘ │
     └──────────────────────────────────────────────────────────────────────────────┘
+
 ```
+
+---
 
 ## 2. Advanced Engineering Extensions (Free Tier)
 
-To elevate this project from a standard exam setup to a high-fidelity platform engineering piece, we add three critical services. These include real-world engineering trade-offs:
+To elevate this project from a standard exam setup to a high-fidelity platform engineering piece, we add three critical services:
 
 ### 1. CloudFront + S3 (Static Asset Offloading)
 
-- **Status:** **Critical / Must-Have**
-- **Engineering:** Host static frontend assets in a private S3 bucket, served globally via CloudFront with Origin Access Control (OAC).
-- **Trade-off:** **Cache Latency.** Updates to files require manual invalidation or short TTLs. It adds complexity to your CI/CD pipeline but is essential for production performance.
-- **Resume Value:** High (demonstrates CDN mastery).
+* **Status:** **Critical / Must-Have**
+* **Engineering:** Host static frontend assets in a private S3 bucket, served globally via CloudFront with Origin Access Control (OAC).
+* **Trade-off:** **Cache Latency.** Updates to files require manual invalidation or short TTLs.
+* **Resume Value:** High (demonstrates CDN mastery).
 
 ### 2. CloudWatch Alarms + SNS (Monitoring)
 
-- **Status:** **Highly Recommended**
-- **Engineering:** Create CPU threshold alarms for the ASG that trigger SNS email notifications.
-- **Trade-off:** **Alert Noise.** Over-sensitive alarms result in email spam during development; you must carefully tune thresholds.
-- **Resume Value:** Medium-High (demonstrates SRE fundamentals).
+* **Status:** **Highly Recommended**
+* **Engineering:** Create CPU threshold alarms for the ASG that trigger SNS email notifications.
+* **Trade-off:** **Alert Noise.** Over-sensitive alarms result in email alerts during development.
+* **Resume Value:** Medium-High (demonstrates SRE fundamentals).
 
 ### 3. SSM Parameter Store (Secrets)
 
-- **Status:** **Recommended**
-- **Engineering:** Inject database credentials at runtime via IAM Instance Profiles instead of hardcoded variables.
-- **Trade-off:** **Rate Limiting.** Standard parameters are free but throttled at 40 req/sec. You must cache secrets on instances at startup to avoid API throttling.
-- **Resume Value:** Medium (demonstrates production-grade security).
+* **Status:** **Recommended**
+* **Engineering:** Inject database credentials at runtime via IAM Instance Profiles instead of hardcoded variables.
+* **Trade-off:** **Rate Limiting.** Standard parameters are free but throttled at 40 req/sec. Cache secrets on boot.
+* **Resume Value:** Medium (demonstrates production-grade security).
+
+---
 
 ## 3. Core Differences: Paid Enterprise Spec vs. Free Tier Spec
 
-| Component               | Paid Enterprise Spec                         | Free Tier Guardrail Spec                        | Cost / Billing Reality                                                                             |
-| :---------------------- | :------------------------------------------- | :---------------------------------------------- | :------------------------------------------------------------------------------------------------- |
-| **Outbound Updates**    | Private subnets routing via **NAT Gateway**. | Public subnets with **Internet Gateway (IGW)**. | **Saves ~$33.00/mo.** WARNING: Public IPv4 addresses now cost $0.005/hr. Use `make destroy` daily. |
-| **Database Redundancy** | RDS Multi-AZ PostgreSQL.                     | RDS Single-AZ (`t3.micro`/`t4g.micro`).         | **Saves ~$15.00/mo.** Single-AZ keeps you within the 750 free monthly RDS hours.                   |
-| **Key Management**      | Customer Managed KMS ($1.00/mo).             | Default AWS Managed Key (`aws/rds`).            | **Saves ~$1.00/mo.** Managed keys have no flat fee.                                                |
-| **Cost Protection**     | Enterprise Cost Explorer.                    | **AWS Zero-Spend Budget**.                      | **100% Free.** Fires SNS alert if charges > $1.00.                                                 |
+| Component | Paid Enterprise Spec | Free Tier Guardrail Spec | Cost / Billing Reality |
+| --- | --- | --- | --- |
+| **Outbound Updates** | Private subnets routing via **NAT Gateway**. | Public subnets routing via **Internet Gateway (IGW)**. | **Saves ~$33.00/mo.** Auto-assigned public IPs leverage 750 free in-use IPv4 hours/month. Use `make destroy` daily. |
+| **Database Redundancy** | RDS Multi-AZ PostgreSQL. | RDS Single-AZ (`db.t3.micro`). | **Saves ~$15.00/mo.** Single-AZ stays within the 750 free monthly RDS hours. |
+| **Key Management** | Customer Managed KMS ($1.00/mo). | Default AWS Managed Key (`aws/rds`). | **Saves ~$1.00/mo.** Managed keys have no flat monthly fee. |
+| **Cost Protection** | Enterprise Cost Explorer. | **AWS Zero-Spend Budget**. | **100% Free.** Fires SNS alert if charges exceed $1.00. |
+
+---
 
 ## 4. Free Tier Guardrails
 
-- **IPv4 Cost Awareness:** AWS now charges for every public IPv4 address. Ensure your EC2 instances in public subnets do _not_ receive public IPs; let the ALB handle all public traffic.
-- **Zero-Spend Budget:** Create a budget in the AWS Console for $1.00. Set an alert to email your SNS topic. This is your only true safety net against configuration errors.
-- **Instance Types:** Use `t4g.micro` (Graviton/ARM) where possible. It is newer, more performant, and fully included in the Free Tier.
+* **IPv4 Management:** App instances in public subnets receive auto-assigned public IPv4 addresses to pull packages directly via the Internet Gateway without needing an expensive NAT Gateway.
+* **Zero-Spend Budget:** Provision an `aws_budgets_budget` resource set to $1.00 USD with SNS email alerts as an automated safety net against unintended charges.
+* **Compute Optimization:** Defaults to `t3.micro` for general Free Tier safety, with `variables.tf` structured to allow optional ARM/Graviton (`t4g.micro`) deployment.
+
+---
 
 ## 5. Terraform Directory Layout (`infra/aws/`)
 
@@ -88,28 +97,31 @@ To elevate this project from a standard exam setup to a high-fidelity platform e
 infra/aws/
 ├── versions.tf      # AWS Provider (~> 5.0) + Cloudflare R2 remote state backend
 ├── provider.tf      # Configures AWS provider default tags and region
-├── variables.tf     # Parameters (CIDR, t4g.micro instances, etc.)
+├── variables.tf     # Parameters (CIDR, t3.micro instances, etc.)
 ├── vpc.tf           # VPC, Subnets, Route Tables, Internet Gateway (IGW)
 ├── security.tf      # Chained Security Groups & IAM instance profiles
 ├── compute.tf       # Launch Template, ASG, and Application Load Balancer
 ├── storage.tf       # Private S3 Bucket, CloudFront Distribution & OAC Policy
 ├── database.tf      # Single-AZ RDS PostgreSQL Instance & DB Subnet Group
-├── monitoring.tf    # CloudWatch Alarms & SNS Topics
+├── monitoring.tf    # CloudWatch Alarms, SNS Topics, & AWS Zero-Spend Budget
 ├── secrets.tf       # SSM Parameter Store definitions
 └── outputs.tf       # ALB DNS endpoint & CloudFront URL for testing
+
 ```
 
-## 5. Engineering Gotchas (The "Real World" Gaps)
+---
 
-- **Schema Seeding:** Terraform is for infrastructure, not application data. Prepare an `init.sql` script. Avoid `null_resource` provisioners (they cause state drift). Manage migrations via your application logic at startup.
-- **Dynamic Endpoint Injection:** RDS hostnames are generated at runtime. Use Terraform’s `templatefile()` function to inject `aws_db_instance.address` into your EC2 User Data script. Do not hardcode connection strings.
-- **IAM & SSM Startup Propagation Latency:** IAM Instance Profiles take a few seconds to attach during EC2 initialization. If your User Data script attempts to fetch secrets from SSM immediately on boot, it will fail with `AccessDenied`. Use `cloud-init` wait-modules or wrap your SSM fetch commands in a retry loop inside the User Data script.
-- **ALB Health Check Mismatch:** If your app listens on `/` or port `3000`, ensure the ALB Target Group health check path matches the app route. Misconfigured health check paths cause the ASG to enter an infinite tear-down/re-create loop.
-- **State & Tooling Versioning:** Always include a `.terraform-version` file in `infra/aws/`. Version drift between your local binary and the R2 state can cause cryptic state-lock or format errors.
+## 6. Engineering Gotchas (The "Real World" Gaps)
 
-## 6. Development Flow with Makefile
+* **Schema Seeding:** Manage database schema initialization via application startup routines rather than Terraform `null_resource` provisioners to prevent state drift.
+* **Dynamic Endpoint Injection:** RDS hostnames are generated at runtime. Use Terraform’s `templatefile()` function to inject `aws_db_instance.address` into your EC2 User Data script.
+* **IAM & SSM Startup Propagation Latency:** IAM Instance Profiles take a few seconds to propagate during EC2 initialization. Ensure your User Data script includes retry loops or `cloud-init` waits when fetching SSM parameter values.
+* **ALB Health Check Mismatch:** Match the ALB Target Group health check path to the exact route exposed by your web app to prevent the Auto Scaling Group from entering continuous replacement loops.
+* **State & Tooling Versioning:** Include a `.terraform-version` file in `infra/aws/` to keep your local CLI aligned with remote Cloudflare R2 state locks.
 
-Once you decide to deploy, you can control the entire cycle safely from your CLI:
+---
+
+## 7. Development Flow with Makefile
 
 ```bash
 # 1. Initialize remote state in Cloudflare R2
@@ -123,4 +135,5 @@ make apply MOD=aws
 
 # 4. Burn it down cleanly when done studying to guarantee $0.00 spend
 make destroy MOD=aws
+
 ```
