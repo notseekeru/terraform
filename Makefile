@@ -19,10 +19,14 @@ validate:
 
 init:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
+		AWS_ACCESS_KEY_ID=$$R2_ACCESS_KEY_ID \
+		AWS_SECRET_ACCESS_KEY=$$R2_SECRET_ACCESS_KEY \
 		terraform -chdir=infra/$(MOD) init $(backend_config)
 
 upgradeinit:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
+		AWS_ACCESS_KEY_ID=$$R2_ACCESS_KEY_ID \
+		AWS_SECRET_ACCESS_KEY=$$R2_SECRET_ACCESS_KEY \
 		terraform -chdir=infra/$(MOD) init -upgrade $(backend_config)
 
 plan:
@@ -41,7 +45,9 @@ destroy:
 migrate:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
 		terraform -chdir=infra/$(MOD) init -migrate-state $(backend_config)
-
+	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
+		AWS_ACCESS_KEY_ID=$$R2_ACCESS_KEY_ID \
+		AWS_SECRET_ACCESS_KEY=$$R2_SECRET_ACCESS_KEY \
 # Dump diagramdb from local k3s postgres to ~/backups
 dump:
 	@mkdir -p ~/backups
