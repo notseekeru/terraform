@@ -17,3 +17,7 @@ variable "db_instance_class" {
   type    = string
   default = "db.t4g.micro"
 }
+variable "POSTGRES_PASSWORD" {
+  type      = string
+  sensitive = true
+}
