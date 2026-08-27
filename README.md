@@ -1,7 +1,7 @@
 # Terraform — Personal Cloud Infrastructure
 
 > Infrastructure-as-Code for my personal cloud environment.  
-> **Providers:** DigitalOcean / Cloudflare R2 · **Provisioner:** Terraform · **Orchestrator:** ArgoCD
+> **Providers:** DigitalOcean / Cloudflare R2 / AWS · **Provisioner:** Terraform · **Orchestrator:** ArgoCD
 
 ---
 
@@ -17,6 +17,7 @@
 - [Ansible Integration](#ansible-integration)
 - [DOKS Cluster (Cloud)](#doks-cluster-cloud)
 - [K3s Module (Local)](#k3s-module-local)
+- [AWS Module (Cloud)](#aws-module-cloud)
 - [Nginx Ingress Controller](#nginx-ingress-controller)
 - [ArgoCD](#argocd)
 - [Managed Database (PostgreSQL)](#managed-database-postgresql)
@@ -52,8 +53,9 @@ State is stored in a **Cloudflare R2 bucket** (`s3` backend, S3-compatible) — 
 | `droplet` | `terraform/droplet/terraform.tfstate` | s3      |
 | `doks`    | `terraform/doks/terraform.tfstate`    | s3      |
 | `k3s`     | `terraform/k3s/terraform.tfstate`     | s3      |
+| `aws`     | `terraform/aws/terraform.tfstate`     | s3      |
 
-**Backend config** lives per module in `versions.tf`. The R2 bucket name and account id are injected from Infisical (`R2_BUCKET`, `R2_ACCOUNT_ID`) via `-backend-config` at `init` time; the R2 credentials are injected by Infisical as `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` env vars, which the s3 backend picks up natively (no explicit `-backend-config` needed for creds).
+**Backend config** lives per module in `versions.tf`. The R2 bucket, key, and access/secret keys are passed from Infisical env vars at `init` time via `-backend-config` (`TF_VAR_R2_BUCKET`, `TF_VAR_R2_ACCOUNT_ID`, `TF_VAR_R2_ACCESS_KEY_ID`, `TF_VAR_R2_SECRET_ACCESS_KEY`); the R2 endpoint URL is injected as `AWS_ENDPOINT_URL_S3` (env-var source for the s3 backend's `endpoints.s3`). The AWS-specific module (`infra/aws`) additionally uses real AWS credentials via the native `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` env vars for its provider — kept separate from the R2 creds. See `docs/R2-backend-credential-conflict.md` for the collision that motivated this split.
 
 **First-time setup** (per module, or after changing backend config):
 
@@ -66,7 +68,7 @@ The backend binding is cached in `infra/<MOD>/.terraform/terraform.tfstate` afte
 **Caveats**
 
 - Remote state gives Terraform **native locking** — concurrent runs against a module are guarded.
-- Credentials are never written to the state files (they come from env at run time).
+- Splitting R2 creds (`TF_VAR_R2_*` + `AWS_ENDPOINT_URL_S3`) from real AWS creds (`AWS_*`) avoids the `InvalidAccessKeyId` collision documented in `docs/R2-backend-credential-conflict.md`.
 - `infra/<MOD>/terraform.tfstate*` local files are gitignored; after migration the primary state is in R2 only.
 
 ---
@@ -80,7 +82,7 @@ cd terraform
 # 2. Secrets come from Infisical (see .envrc / SECRETS_PATH=... in the Makefile).
 #    There is no secrets.tfvars-driven flow — all tfvars-style inputs flow via infisical run.
 
-# 3. Initialize a module (droplet, doks, or k3s) — pulls providers + binds R2 backend
+# 3. Initialize a module (droplet, doks, k3s, or aws) — pulls providers + binds R2 backend
 #    If you need k3s then you need to install k3s software
 make init MOD=k3s
 
@@ -90,10 +92,13 @@ make plan MOD=k3s
 # 5. Apply
 make apply MOD=k3s
 
-# For DOKS / Droplets:
+# For DOKS / Droplets / AWS:
 # make init MOD=doks
 # make plan MOD=doks
 # make apply MOD=doks
+# make init MOD=aws
+# make plan MOD=aws
+# make apply MOD=aws
 ```
 
 ---
@@ -115,11 +120,23 @@ terraform/
 │   │   ├── provider.tf      #   DO + dynamic k8s/helm/kubectl providers
 │   │   ├── variables.tf     #   DO_TOKEN, CLOUDFLARE_TOKEN, GITHUB_*, DIAGRAM_API_KEY
 │   │   └── main.tf          #   cluster → managed PG → helm releases → secrets → argocd app
-│   └── k3s/                 #   state #3 — local k3s cluster (no DO)
-│       ├── versions.tf      #   helm, k8s, kubectl only
-│       ├── provider.tf      #   providers read from ~/.kube/config
-│       ├── variables.tf     #   CLOUDFLARE_TOKEN, GITHUB_*, DIAGRAM_API_KEY, POSTGRES_PASSWORD
-│       └── main.tf          #   helm releases → self-hosted PG StatefulSet → secrets → argocd app
+│   ├── k3s/                 #   state #3 — local k3s cluster (no DO)
+│   │   ├── versions.tf      #   helm, k8s, kubectl only
+│   │   ├── provider.tf      #   providers read from ~/.kube/config
+│   │   ├── variables.tf     #   CLOUDFLARE_TOKEN, GITHUB_*, DIAGRAM_API_KEY, POSTGRES_PASSWORD
+│   │   └── main.tf          #   helm releases → self-hosted PG StatefulSet → secrets → argocd app
+│   └── aws/                 #   state #4 — AWS sandbox (S3, RDS, VPC, ASG, CloudFront)
+│       ├── versions.tf      #   aws provider + s3(R2) backend
+│       ├── provider.tf      #   aws provider, region + default tags
+│       ├── variables.tf     #   instance classes, POSTGRES_PASSWORD
+│       ├── vpc.tf           #   VPC, subnets, route tables, IGW
+│       ├── compute.tf       #   launch template, ASG, ALB
+│       ├── storage.tf       #   S3 bucket + CloudFront (OAC)
+│       ├── database.tf      #   RDS PostgreSQL
+│       ├── security.tf      #   security groups + IAM
+│       ├── monitoring.tf    #   CloudWatch alarms + budget
+│       ├── secrets.tf       #   SSM parameters
+│       └── outputs.tf       #   ALB DNS + CloudFront domain
 ├── secrets.tfvars           # Legacy gitignored file (not the live secret source)
 ├── secrets.tfvars.example   # Dummy template, safe to commit — documents expected vars
 ├── Makefile                 # Workflow shortcuts (accepts MOD=, ENV=, SECRETS_PATH=)
@@ -131,25 +148,25 @@ terraform/
 
 ## Makefile Workflow
 
-All targets accept `MOD=droplet`, `MOD=doks`, or `MOD=k3s`. The `infra/` prefix and Infisical secret flow are baked into each target. Sensitive vars (incl. the R2 credentials backing state) come from `infisical run`.
+All targets accept `MOD=droplet`, `MOD=doks`, `MOD=k3s`, or `MOD=aws`. The `infra/` prefix and Infisical secret flow are baked into each target. Sensitive vars (incl. the R2 credentials backing state) come from `infisical run`. Backend-facing targets (`init`, `upgradeinit`, `migrate`) exec terraform through `/bin/sh -c` so the `TF_VAR_R2_*` refs expand from infisical's injected env; plan/apply/destroy exec directly so the AWS provider sees native `AWS_*` creds.
 
 | Target             | Command                                                                                    | Description                              |
 | ------------------ | ------------------------------------------------------------------------------------------ | ---------------------------------------- |
-| `make init`        | `infisical run -- terraform -chdir=infra/$(MOD) init -backend-config="..."`                | Init providers + bind R2 backend         |
-| `make upgradeinit` | `infisical run -- terraform -chdir=infra/$(MOD) init -upgrade -backend-config="..."`       | Upgrade providers / re-bind backend      |
+| `make init`        | `infisical run -- /bin/sh -c 'terraform ... init $(backend_config)'`                          | Init providers + bind R2 backend         |
+| `make upgradeinit` | `infisical run -- /bin/sh -c 'terraform ... init -upgrade $(backend_config)'`                 | Upgrade providers / re-bind backend      |
 | `make plan`        | `infisical run -- terraform -chdir=infra/$(MOD) plan`                                      | Preview changes                          |
 | `make apply`       | `infisical run -- terraform -chdir=infra/$(MOD) apply`                                     | Apply changes                            |
 | `make destroy`     | `infisical run -- terraform -chdir=infra/$(MOD) destroy`                                   | Tear down resources                      |
 | `make fmt`         | `terraform -chdir=infra/$(MOD) fmt`                                                        | Format all `.tf` files                   |
 | `make validate`    | `terraform -chdir=infra/$(MOD) validate`                                                   | Validate configuration                   |
-| `make migrate`     | `infisical run -- terraform -chdir=infra/$(MOD) init -migrate-state -backend-config="..."` | One-time: push local state to R2         |
+| `make migrate`     | `infisical run -- /bin/sh -c 'terraform ... init -migrate-state $(backend_config)'`          | One-time: push local state to R2         |
 | `make dump`        | `kubectl exec ... pg_dump \| gzip > ~/backups/`                                            | Backup diagramdb from local k3s postgres |
 
 **Variables:**
 
 | Variable       | Default      | Description                                      |
 | -------------- | ------------ | ------------------------------------------------ |
-| `MOD`          | (empty)      | Module subdirectory: `droplet`, `doks`, or `k3s` |
+| `MOD`          | (empty)      | Module subdirectory: `droplet`, `doks`, `k3s`, or `aws` |
 | `ENV`          | `dev`        | Infisical environment                            |
 | `SECRETS_PATH` | `/terraform` | Infisical secrets path                           |
 
@@ -167,7 +184,7 @@ make migrate MOD=k3s    # one-time local→R2 state copy
 
 ## Variables
 
-Variables are defined per module in `infra/droplet/variables.tf`, `infra/doks/variables.tf`, and `infra/k3s/variables.tf`. Secrets are injected from Infisical (the `infisical run` wrapper in the Makefile) and mapped to Terraform input vars as `TF_VAR_*`. A `secrets.tfvars.example` template is kept for reference, but it is not the live secret source.
+Variables are defined per module in `infra/droplet/variables.tf`, `infra/doks/variables.tf`, `infra/k3s/variables.tf`, and `infra/aws/variables.tf`. Secrets are injected from Infisical (the `infisical run` wrapper in the Makefile) and mapped to Terraform input vars as `TF_VAR_*`. A `secrets.tfvars.example` template is kept for reference, but it is not the live secret source.
 
 ### `infra/droplet/variables.tf`
 
@@ -330,7 +347,31 @@ make dump   # → ~/backups/diagramdb-<timestamp>.sql.gz
 ```
 
 ---
+## AWS Module (Cloud)
 
+An AWS sandbox architecture (`infra/aws/`, state #4): VPC, public subnets, auto-scaling EC2 web
+tier behind an Application Load Balancer, private single-AZ RDS PostgreSQL, and an S3 bucket
+served via CloudFront. Provisioning targets a real AWS account; state still lives in R2.
+
+### Credential split
+
+Importantly, this module's **real AWS** credentials use the native `AWS_ACCESS_KEY_ID` /
+`AWS_SECRET_ACCESS_KEY` env vars, which are distinct from the R2 state-backend creds
+(`TF_VAR_R2_*` + `AWS_ENDPOINT_URL_S3`). If these ever collide you get
+`InvalidAccessKeyId` — see `docs/R2-backend-credential-conflict.md`.
+
+### Init & Apply
+
+```bash
+make init MOD=aws
+make plan MOD=aws
+make apply MOD=aws
+```
+
+Requires Infisical secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (AWS account) and
+the `TF_VAR_R2_*` backend pair. See `AWS.md` for the full architecture.
+
+---
 ## Nginx Ingress Controller
 
 Installed via Helm in both `doks` and `k3s` modules, in the `ingress-nginx` namespace. Configured as `ClusterIP` — Cloudflare Tunnel handles external routing.
@@ -431,7 +472,7 @@ direnv allow
 - The DO token is consumed via `var.DO_TOKEN` (marked `sensitive = true`).
 - SSH keys are registered with Droplets at provision time — no post-provision injection.
 - GitHub PAT and credentials are written directly to Kubernetes secrets — they never leave the Terraform state.
-- R2 credentials for the state backend come from env (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) and are never baked into state files.
+- R2 state-backend creds are namespaced `TF_VAR_R2_*` (+ `AWS_ENDPOINT_URL_S3`) and kept distinct from the real AWS provider creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) to avoid the collision in `docs/R2-backend-credential-conflict.md`.
 - `secrets.tfvars`, `*.tfvars`, `kubeconfig`, and `.infisical.json` are all in `.gitignore`.
 - `secrets.tfvars.example` is safe to commit — it has dummy/empty values for all secrets.
 - Consider GitLeaks + pre-commit hooks to prevent accidental secret commits.
