@@ -7,15 +7,15 @@
 
 ## Prerequisites
 
-| Requirement            | Details                                                                                      |
-| ---------------------- | -------------------------------------------------------------------------------------------- |
-| **Terraform**          | `>= 1.0` ([install guide](https://developer.hashicorp.com/terraform/install))                |
-| **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — needed only for `doks` / `droplet`          |
-| **SSH Keys**           | Public keys uploaded to your DO account or provided inline via `secrets.tfvars`              |
-| **k3s**                | An existing k3s cluster with `~/.kube/config` — see [K3s Module](#k3s-module-local)
-| **Make**               | (Optional) `make` for the workflow targets below                                             |
-| **Nix**                | (Optional) `nix develop` for an isolated dev shell — see [Nix Dev Shell](#nix-dev-shell)     |
-| **direnv**             | (Optional) Auto-loads the Nix shell, pulls latest, and exports `KUBECONFIG` on `cd`          |
+| Requirement            | Details                                                                                  |
+| ---------------------- | ---------------------------------------------------------------------------------------- |
+| **Terraform**          | `>= 1.0` ([install guide](https://developer.hashicorp.com/terraform/install))            |
+| **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — needed only for `doks` / `droplet`      |
+| **SSH Keys**           | Public keys uploaded to your DO account or provided inline via `secrets.tfvars`          |
+| **k3s**                | An existing k3s cluster with `~/.kube/config` — see [K3s Module](#k3s-module-local)      |
+| **Make**               | (Optional) `make` for the workflow targets below                                         |
+| **Nix**                | (Optional) `nix develop` for an isolated dev shell — see [Nix Dev Shell](#nix-dev-shell) |
+| **direnv**             | (Optional) Auto-loads the Nix shell, pulls latest, and exports `KUBECONFIG` on `cd`      |
 
 ---
 
@@ -68,14 +68,6 @@ make plan MOD=k3s
 
 # 5. Apply
 make apply MOD=k3s
-
-# For DOKS / Droplets / AWS:
-# make init MOD=doks
-# make plan MOD=doks
-# make apply MOD=doks
-# make init MOD=aws
-# make plan MOD=aws
-# make apply MOD=aws
 ```
 
 ---
@@ -126,26 +118,6 @@ terraform/
 
 All targets accept `MOD=droplet`, `MOD=doks`, `MOD=k3s`, or `MOD=aws`. The `infra/` prefix and Infisical secret flow are baked into each target. Sensitive vars (incl. the R2 credentials backing state) come from `infisical run`. Backend-facing targets (`init`, `upgradeinit`, `migrate`) exec terraform through `/bin/sh -c` so the `TF_VAR_R2_*` refs expand from infisical's injected env; plan/apply/destroy exec directly so the AWS provider sees native `AWS_*` creds.
 
-| Target             | Command                                                                                    | Description                              |
-| ------------------ | ------------------------------------------------------------------------------------------ | ---------------------------------------- |
-| `make init`        | `infisical run -- /bin/sh -c 'terraform ... init $(backend_config)'`                          | Init providers + bind R2 backend         |
-| `make upgradeinit` | `infisical run -- /bin/sh -c 'terraform ... init -upgrade $(backend_config)'`                 | Upgrade providers / re-bind backend      |
-| `make plan`        | `infisical run -- terraform -chdir=infra/$(MOD) plan`                                      | Preview changes                          |
-| `make apply`       | `infisical run -- terraform -chdir=infra/$(MOD) apply`                                     | Apply changes                            |
-| `make destroy`     | `infisical run -- terraform -chdir=infra/$(MOD) destroy`                                   | Tear down resources                      |
-| `make fmt`         | `terraform -chdir=infra/$(MOD) fmt`                                                        | Format all `.tf` files                   |
-| `make validate`    | `terraform -chdir=infra/$(MOD) validate`                                                   | Validate configuration                   |
-| `make migrate`     | `infisical run -- /bin/sh -c 'terraform ... init -migrate-state $(backend_config)'`          | One-time: push local state to R2         |
-| `make dump`        | `kubectl exec ... pg_dump \| gzip > ~/backups/`                                            | Backup diagramdb from local k3s postgres |
-
-**Variables:**
-
-| Variable       | Default      | Description                                      |
-| -------------- | ------------ | ------------------------------------------------ |
-| `MOD`          | (empty)      | Module subdirectory: `droplet`, `doks`, `k3s`, or `aws` |
-| `ENV`          | `dev`        | Infisical environment                            |
-| `SECRETS_PATH` | `/terraform` | Infisical secrets path                           |
-
 **Examples:**
 
 ```bash
@@ -161,42 +133,6 @@ make migrate MOD=k3s    # one-time local→R2 state copy
 ## Variables
 
 Variables are defined per module in `infra/droplet/variables.tf`, `infra/doks/variables.tf`, `infra/k3s/variables.tf`, and `infra/aws/variables.tf`. Secrets are injected from Infisical (the `infisical run` wrapper in the Makefile) and mapped to Terraform input vars as `TF_VAR_*`. A `secrets.tfvars.example` template is kept for reference, but it is not the live secret source.
-
-### `infra/droplet/variables.tf`
-
-| Variable         | Type               | Required | Default         | Description                                               |
-| ---------------- | ------------------ | -------- | --------------- | --------------------------------------------------------- |
-| `DO_TOKEN`       | `string`           | ✓        | —               | DigitalOcean PAT (write scope)                            |
-| `SSH_PUBLIC_KEY` | `string`           | ✓        | —               | Single SSH public key (flows via `TF_VAR_SSH_PUBLIC_KEY`) |
-| `default_region` | `string`           | —        | `sgp1`          | Default region for all resources                          |
-| `default_size`   | `string`           | —        | `s-1vcpu-1gb`   | Default Droplet size                                      |
-| `default_image`  | `string`           | —        | `debian-13-x64` | Default Droplet image                                     |
-| `servers`        | `map(object(...))` | —        | `{}`            | Server definitions — see [Droplets](#droplets)            |
-
-### `infra/doks/variables.tf`
-
-| Variable           | Type     | Required | Default | Description                               |
-| ------------------ | -------- | -------- | ------- | ----------------------------------------- |
-| `DO_TOKEN`         | `string` | ✓        | —       | DigitalOcean PAT (write scope)            |
-| `default_region`   | `string` | —        | `sgp1`  | Default region for the cluster and DB     |
-| `CLOUDFLARE_TOKEN` | `string` | ✓        | —       | Cloudflare Tunnel token for `cloudflared` |
-| `GITHUB_USERNAME`  | `string` | ✓        | —       | GitHub username for PAT + GHCR auth       |
-| `GITHUB_PAT`       | `string` | ✓        | —       | GitHub PAT (repo + read:packages scopes)  |
-| `GITHUB_REPO_URL`  | `string` | ✓        | —       | GitOps repo URL (consumed by ArgoCD)      |
-| `DIAGRAM_API_KEY`  | `string` | ✓        | —       | API key for the diagram service           |
-| `app_yaml_path`    | `string` | —        | `null`  | Override path to ArgoCD Application YAML  |
-
-### `infra/k3s/variables.tf`
-
-| Variable            | Type     | Required | Default                                    | Description                               |
-| ------------------- | -------- | -------- | ------------------------------------------ | ----------------------------------------- |
-| `CLOUDFLARE_TOKEN`  | `string` | ✓        | —                                          | Cloudflare Tunnel token for `cloudflared` |
-| `GITHUB_USERNAME`   | `string` | —        | `notseekeru`                               | GitHub username for GHCR auth             |
-| `GITHUB_PAT`        | `string` | ✓        | —                                          | GitHub PAT (repo + read:packages scopes)  |
-| `GITHUB_REPO_URL`   | `string` | —        | `https://github.com/notseekeru/gitops.git` | GitOps repo URL                           |
-| `DIAGRAM_API_KEY`   | `string` | ✓        | —                                          | API key for the diagram service           |
-| `POSTGRES_PASSWORD` | `string` | ✓        | —                                          | Password for the local PostgreSQL         |
-| `app_yaml_path`     | `string` | —        | `null`                                     | Override path to ArgoCD Application YAML  |
 
 ---
 
@@ -277,17 +213,6 @@ ansible-playbook -i inventories/droplets.ini --limit tag_web playbooks/site.yml
 | **Version**   | `1.34.8-do.2`        | DO-managed Kubernetes        |
 | **Node pool** | 3 × `s-2vcpu-2gb`    | Worker-pool, 6 GB total      |
 
-### Usage
-
-The kubeconfig is written to `~/kubeconfig` at apply time:
-
-```bash
-export KUBECONFIG=~/kubeconfig
-kubectl get nodes
-```
-
-The `.envrc` already exports `KUBECONFIG=~/kubeconfig` on `cd` when direnv is active.
-
 ### Database
 
 A DigitalOcean managed PostgreSQL 16 (`db-s-1vcpu-1gb`) is provisioned in the same VPC as the cluster. Credentials injected into `diagram-secrets` with `sslmode=no-verify` for private VPC connectivity.
@@ -323,6 +248,7 @@ make dump   # → ~/backups/diagramdb-<timestamp>.sql.gz
 ```
 
 ---
+
 ## AWS Module (Cloud)
 
 An AWS sandbox architecture (`infra/aws/`, state #4): VPC, public subnets, auto-scaling EC2 web
@@ -338,48 +264,6 @@ Real AWS creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) are distinct from t
 Requires Infisical secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (AWS account) and
 
 the `TF_VAR_R2_*` backend pair. See `AWS.md` for the full architecture.
-
----
-## Nginx Ingress Controller
-
-Installed via Helm in both `doks` and `k3s` modules, in the `ingress-nginx` namespace. Configured as `ClusterIP` — Cloudflare Tunnel handles external routing.
-
-| Setting        | Value           |
-| -------------- | --------------- |
-| Namespace      | `ingress-nginx` |
-| Service type   | `ClusterIP`     |
-| Request memory | `128Mi`         |
-| Request CPU    | `100m`          |
-
----
-
-## ArgoCD
-
-Installed via the `argoproj/argo-helm` chart at version `7.7.0` in the `argocd` namespace, alongside Kubernetes secrets and a root Application CR.
-
-### Bootstrap flow
-
-1. Terraform deploys Helm charts + secrets
-2. Terraform applies the root Application manifest via the `kubectl` provider — this is the **only** manifest applied directly
-3. That root Application tells ArgoCD to sync the rest from the GitOps repo
-
-The manifest path defaults to `${path.module}/../../../gitops/app.yaml` (resolved at plan time) but can be overridden via `app_yaml_path`. See `infra/k3s/variables.tf` and `infra/doks/variables.tf`.
-
-### CLI setup
-
-```bash
-# Retrieve initial admin password
-kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}' | base64 -d
-
-# Port-forward the ArgoCD server
-kubectl port-forward svc/argocd-server -n argocd 8443:443
-
-# Login
-argocd login localhost:8443 --grpc-web --insecure
-
-# Change password
-argocd account update-password --grpc-web
-```
 
 ---
 
