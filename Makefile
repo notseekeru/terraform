@@ -9,7 +9,7 @@ backend_config = -backend-config="bucket=$$R2_BUCKET" \
 	-backend-config="endpoint=https://$$R2_ACCOUNT_ID.r2.cloudflarestorage.com" \
 	-backend-config="region=auto"
 
-.PHONY: fmt validate init upgradeinit plan apply destroy migrate dump
+.PHONY: fmt validate init upgradeinit plan apply destroy migrate dump secrets
 
 fmt:
 	terraform -chdir=infra/$(MOD) fmt
@@ -19,14 +19,10 @@ validate:
 
 init:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-		AWS_ACCESS_KEY_ID=$$R2_ACCESS_KEY_ID \
-		AWS_SECRET_ACCESS_KEY=$$R2_SECRET_ACCESS_KEY \
 		terraform -chdir=infra/$(MOD) init $(backend_config)
 
 upgradeinit:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-		AWS_ACCESS_KEY_ID=$$R2_ACCESS_KEY_ID \
-		AWS_SECRET_ACCESS_KEY=$$R2_SECRET_ACCESS_KEY \
 		terraform -chdir=infra/$(MOD) init -upgrade $(backend_config)
 
 plan:
@@ -45,12 +41,14 @@ destroy:
 migrate:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
 		terraform -chdir=infra/$(MOD) init -migrate-state $(backend_config)
-	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-		AWS_ACCESS_KEY_ID=$$R2_ACCESS_KEY_ID \
-		AWS_SECRET_ACCESS_KEY=$$R2_SECRET_ACCESS_KEY \
+
 # Dump diagramdb from local k3s postgres to ~/backups
+
 dump:
 	@mkdir -p ~/backups
 	@kubectl exec -n database svc/postgres -- pg_dump -U diagram -d diagramdb \
 		| gzip > ~/backups/diagramdb-$$(date +%F-%H%M).sql.gz
 	@echo "Backup saved: ~/backups/diagramdb-$$(date +%F-%H%M).sql.gz"
+
+secrets:
+	infisical secrets generate-example-env --env=dev --path=/terraform
