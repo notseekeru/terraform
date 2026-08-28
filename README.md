@@ -152,58 +152,9 @@ make migrate MOD=k3s    # one-time local→R2 state copy
 
 ## Variables
 
-Variables are defined per module in `infra/droplet/variables.tf`, `infra/doks/variables.tf`, `infra/k3s/variables.tf`, and `infra/aws/variables.tf`. Secrets are injected from Infisical (the `infisical run` wrapper in the Makefile) and mapped to Terraform input vars as `TF_VAR_*`. A `secrets.tfvars.example` template is kept for reference, but it is not the live secret source.
+All Terraform input variables live in the module `variables.tf` files — `infra/droplet/variables.tf`, `infra/doks/variables.tf`, `infra/k3s/variables.tf`, `infra/aws/variables.tf` — and carry their own `sensitive = true` flags and `optional()` object schemas (e.g. the droplet `servers` map). Read the source for the authoritative type/required/default split.
 
-### `infra/droplet/variables.tf`
-
-| Variable         | Type               | Required | Default         | Description                                               |
-| ---------------- | ------------------ | -------- | --------------- | --------------------------------------------------------- |
-| `DO_TOKEN`       | `string`           | ✓        | —               | DigitalOcean PAT (write scope)                            |
-| `SSH_PUBLIC_KEY` | `string`           | ✓        | —               | Single SSH public key (flows via `TF_VAR_SSH_PUBLIC_KEY`) |
-| `default_region` | `string`           | —        | `sgp1`          | Default region for all resources                          |
-| `default_size`   | `string`           | —        | `s-1vcpu-1gb`   | Default Droplet size                                      |
-| `default_image`  | `string`           | —        | `debian-13-x64` | Default Droplet image                                     |
-| `servers`        | `map(object(...))` | —        | `{}`            | Server definitions — see [Droplets](#droplets)            |
-
-### `infra/doks/variables.tf`
-
-| Variable           | Type     | Required | Default | Description                               |
-| ------------------ | -------- | -------- | ------- | ----------------------------------------- |
-| `DO_TOKEN`         | `string` | ✓        | —       | DigitalOcean PAT (write scope)            |
-| `default_region`   | `string` | —        | `sgp1`  | Default region for the cluster and DB     |
-| `CLOUDFLARE_TOKEN` | `string` | ✓        | —       | Cloudflare Tunnel token for `cloudflared` |
-| `GITHUB_USERNAME`  | `string` | ✓        | —       | GitHub username for PAT + GHCR auth       |
-| `GITHUB_PAT`       | `string` | ✓        | —       | GitHub PAT (repo + read:packages scopes)  |
-| `GITHUB_REPO_URL`  | `string` | ✓        | —       | GitOps repo URL (consumed by ArgoCD)      |
-| `DIAGRAM_API_KEY`  | `string` | ✓        | —       | API key for the diagram service           |
-| `app_yaml_path`    | `string` | —        | `null`  | Override path to ArgoCD Application YAML  |
-
-### `infra/k3s/variables.tf`
-
-| Variable            | Type     | Required | Default                                    | Description                               |
-| ------------------- | -------- | -------- | ------------------------------------------ | ----------------------------------------- |
-| `CLOUDFLARE_TOKEN`  | `string` | ✓        | —                                          | Cloudflare Tunnel token for `cloudflared` |
-| `GITHUB_USERNAME`   | `string` | —        | `notseekeru`                               | GitHub username for GHCR auth             |
-| `GITHUB_PAT`        | `string` | ✓        | —                                          | GitHub PAT (repo + read:packages scopes)  |
-| `GITHUB_REPO_URL`   | `string` | —        | `https://github.com/notseekeru/gitops.git` | GitOps repo URL                           |
-| `DIAGRAM_API_KEY`   | `string` | ✓        | —                                          | API key for the diagram service           |
-| `POSTGRES_PASSWORD` | `string` | ✓        | —                                          | Password for the local PostgreSQL         |
-| `app_yaml_path`     | `string` | —        | `null`                                     | Override path to ArgoCD Application YAML  |
-
-### `infra/aws/variables.tf`
-
-| Variable            | Type     | Required | Default          | Description                                                  |
-| ------------------- | -------- | -------- | ---------------- | ------------------------------------------------------------ |
-| `region`            | `string` | —        | `ap-southeast-1` | AWS region for all resources                                 |
-| `vpc_cidr`          | `string` | —        | `10.0.0.0/16`    | CIDR block for the VPC                                       |
-| `instance_type`     | `string` | —        | `t4g.micro`      | EC2 instance type (ARM/Graviton)                             |
-| `db_instance_class` | `string` | —        | `db.t4g.micro`   | RDS instance class (Free Tier single-AZ)                     |
-| `POSTGRES_PASSWORD` | `string` | ✓        | —                | RDS PostgreSQL admin password                                 |
-| `ALERT_EMAIL`       | `string` | ✓        | —                | Email subscribed to SNS for budget + CloudWatch alerts        |
-| `credit_cap_usd`    | `number` | —        | `190.0`          | Credit-cap budget limit (alarms on 95% actual / 90% forecast) |
-| `alb_domain`          | `string` | —        | `""`            | Domain for HTTPS: adds ACM cert + :443 listener + redirect |
-
----
+## Secrets are injected from Infisical (the `infisical run` wrapper in the Makefile) and mapped to Terraform input vars as `TF_VAR_*`. A `secrets.tfvars.example` template is kept for reference, but it is not the live secret source.
 
 ## Droplets
 
@@ -291,8 +242,6 @@ export KUBECONFIG=~/kubeconfig
 kubectl get nodes
 ```
 
-The `.envrc` already exports `KUBECONFIG=~/kubeconfig` on `cd` when direnv is active.
-
 ### Database
 
 A DigitalOcean managed PostgreSQL 16 (`db-s-1vcpu-1gb`) is provisioned in the same VPC as the cluster. Credentials injected into `diagram-secrets` with `sslmode=no-verify` for private VPC connectivity.
@@ -335,10 +284,6 @@ An AWS sandbox architecture (`infra/aws/`, state #4): VPC, public subnets, auto-
 tier behind an Application Load Balancer, private single-AZ RDS PostgreSQL, and an S3 bucket
 served via CloudFront. Provisioning targets a real AWS account; state still lives in R2.
 
-### Credential split
-
-Real AWS creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) are distinct from the R2 state-backend pair (`TF_VAR_R2_*`). Collision ⇒ `InvalidAccessKeyId` — see [State Management](#state-management) and `docs/R2-backend-credential-conflict.md`.
-
 ### Credentials required
 
 Requires Infisical secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (AWS account),
@@ -380,17 +325,7 @@ The manifest path defaults to `${path.module}/../../../gitops/app.yaml` (resolve
 ### CLI setup
 
 ```bash
-# Retrieve initial admin password
-kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}' | base64 -d
 
-# Port-forward the ArgoCD server
-kubectl port-forward svc/argocd-server -n argocd 8443:443
-
-# Login
-argocd login localhost:8443 --grpc-web --insecure
-
-# Change password
-argocd account update-password --grpc-web
 ```
 
 ---
