@@ -24,6 +24,17 @@ resource "aws_acm_certificate" "alb" {
   validation_method = "DNS"
 }
 
+resource "aws_acm_certificate_validation" "alb" {
+  count           = var.alb_domain != "" ? 1 : 0
+  certificate_arn = aws_acm_certificate.alb[0].arn
+  # Validation is done via a CNAME added manually in Cloudflare (see the
+  # alb_domain_validation_cname output). This resource polls until the cert
+  # reaches ISSUED, so the :443 listener below only binds a valid certificate.
+  timeouts {
+    create = "10m"
+  }
+}
+
 
 resource "aws_lb_listener" "main" {
   load_balancer_arn = aws_lb.main.arn
@@ -47,6 +58,8 @@ resource "aws_lb_listener" "https" {
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
   certificate_arn   = aws_acm_certificate.alb[0].arn
+  # Wait for ACM cert to reach ISSUED before binding :443
+  depends_on = [aws_acm_certificate_validation.alb]
 
   default_action {
     type             = "forward"
