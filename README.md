@@ -201,6 +201,7 @@ Variables are defined per module in `infra/droplet/variables.tf`, `infra/doks/va
 | `POSTGRES_PASSWORD` | `string` | ✓        | —                | RDS PostgreSQL admin password                                 |
 | `ALERT_EMAIL`       | `string` | ✓        | —                | Email subscribed to SNS for budget + CloudWatch alerts        |
 | `credit_cap_usd`    | `number` | —        | `190.0`          | Credit-cap budget limit (alarms on 95% actual / 90% forecast) |
+| `alb_domain`          | `string` | —        | `""`            | Domain for HTTPS: adds ACM cert + :443 listener + redirect |
 
 ---
 
@@ -344,11 +345,15 @@ Requires Infisical secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (AWS ac
 
 `TF_VAR_ALERT_EMAIL` (SNS alert email), and the `TF_VAR_R2_*` backend pair.
 
-Web tier: EC2 instances in an Auto Scaling Group registered to an Application Load Balancer with
-ELB health checks. Static assets: private S3 bucket served through CloudFront via Origin Access
-Control (OAC). Alerting: a CloudWatch CPU alarm plus a zero-spend budget both publish to the SNS
-topic (`TF_VAR_ALERT_EMAIL` must confirm the subscription once). See `AWS.md` for the full
-architecture.
+Web tier: EC2 instances in an Auto Scaling Group (target-tracking on CPU) registered to an
+Application Load Balancer with ELB health checks. Static assets: private S3 bucket served through
+CloudFront via Origin Access Control (OAC). Alerting: a CloudWatch CPU alarm plus zero-spend and
+credit-cap budgets all publish to the SNS topic (`TF_VAR_ALERT_EMAIL` must confirm the subscription
+once).
+
+HTTPS is optional: set `alb_domain` (e.g. `app.example.tech`) to get an ACM certificate, a :443
+listener, and an HTTP→HTTPS redirect. Add the returned `alb_domain_validation_cname` in Cloudflare
+to issue the cert. See `AWS.md` for the full architecture.
 
 ---
 
