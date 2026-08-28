@@ -200,6 +200,7 @@ Variables are defined per module in `infra/droplet/variables.tf`, `infra/doks/va
 | `db_instance_class` | `string` | —        | `db.t4g.micro`   | RDS instance class (Free Tier single-AZ)                     |
 | `POSTGRES_PASSWORD` | `string` | ✓        | —                | RDS PostgreSQL admin password                                 |
 | `ALERT_EMAIL`       | `string` | ✓        | —                | Email subscribed to SNS for budget + CloudWatch alerts        |
+| `credit_cap_usd`    | `number` | —        | `190.0`          | Credit-cap budget limit (alarms on 95% actual / 90% forecast) |
 
 ---
 

@@ -86,7 +86,8 @@ To elevate this project from a standard exam setup to a high-fidelity platform e
 ## 4. Free Tier Guardrails
 
 - **IPv4 Management:** App instances in public subnets receive auto-assigned public IPv4 addresses to pull packages directly via the Internet Gateway without needing an expensive NAT Gateway.
-- **Zero-Spend Budget:** Provision an `aws_budgets_budget` resource set to $1.00 USD with SNS email alerts as an automated safety net against unintended charges.
+- **Zero-Spend Budget:** Provision an `aws_budgets_budget` resource (`zero_spend`) set to $1.00 USD with SNS email alerts as an automated safety net against unintended charges.
+- **Credit-Cap Budget:** New AWS accounts get **up to $200 in free-tier promotional credits** — $100 on sign-up plus up to $100 more earned while exploring core services. To use that headroom without exhausting it, a second `aws_budgets_budget` (`credit_cap`) is set to `var.credit_cap_usd` (default `190.0`) and alarms on **95% actual spend** and **90% forecasted spend** (SNS email). Bump `credit_cap_usd` if your account holds more credit; both budgets publish to the same `billing-alerts` SNS topic.
 - **Compute Optimization:** Defaults to `t3.micro` for general Free Tier safety, with `variables.tf` structured to allow optional ARM/Graviton (`t4g.micro`) deployment.
 
 ---
@@ -97,7 +98,7 @@ To elevate this project from a standard exam setup to a high-fidelity platform e
 infra/aws/
 ├── versions.tf      # AWS Provider (~> 5.0) + Cloudflare R2 remote state backend
 ├── provider.tf      # Configures AWS provider default tags and region
-├── variables.tf     # Parameters (CIDR, t3.micro instances, POSTGRES_PASSWORD, ALERT_EMAIL)
+├── variables.tf     # Parameters (CIDR, instance classes, POSTGRES_PASSWORD, ALERT_EMAIL, credit_cap_usd)
 ├── vpc.tf           # VPC, Subnets, Route Tables, Internet Gateway (IGW)
 ├── security.tf      # Chained Security Groups & IAM instance profiles
 ├── compute.tf       # Launch Template, ASG, and Application Load Balancer
