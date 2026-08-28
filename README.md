@@ -2,6 +2,7 @@
 
 > Infrastructure-as-Code for my personal cloud environment.  
 > **Providers:** DigitalOcean / Cloudflare R2 / AWS · **Provisioner:** Terraform · **Orchestrator:** ArgoCD
+> **AI usage is encouraged.** This repo is designed to be AI-friendly: ask an agent to explain, plan, audit, or change infrastructure. Architecture always ends with **a human owner in the loop** — no change is applied without human review of a `plan`. AI is an helper not a dependancy.
 
 ---
 
@@ -325,10 +326,8 @@ The manifest path defaults to `${path.module}/../../../gitops/app.yaml` (resolve
 ### CLI setup
 
 ```bash
-
+## PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d) && echo -e "\n---> Local Login: https://localhost:8080\n---> Network Login: https://<YOUR_COMPUTER_IP>:8080\n---> Username: admin\n---> Password: $PASS\n" && kubectl port-forward svc/argocd-server -n argocd --address 0.0.0.0 8080:443
 ```
-PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d) && echo -e "\n---> Local Login: https://localhost:8080\n---> Network Login: https://<YOUR_COMPUTER_IP>:8080\n---> Username: admin\n---> Password: $PASS\n" && kubectl port-forward svc/argocd-server -n argocd --address 0.0.0.0 8080:443
----
 
 ## Managed Database (PostgreSQL)
 
