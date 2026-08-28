@@ -97,7 +97,7 @@ terraform/
 │   └── aws/                 #   state #4 — AWS sandbox (S3, RDS, VPC, ASG, CloudFront)
 │       ├── versions.tf      #   aws provider + s3(R2) backend
 │       ├── provider.tf      #   aws provider, region + default tags
-│       ├── variables.tf     #   instance classes, POSTGRES_PASSWORD
+│       ├── variables.tf     #   instance classes, POSTGRES_PASSWORD, ALERT_EMAIL
 │       ├── vpc.tf           #   VPC, subnets, route tables, IGW
 │       ├── compute.tf       #   launch template, ASG, ALB
 │       ├── storage.tf       #   S3 bucket + CloudFront (OAC)
@@ -189,6 +189,17 @@ Variables are defined per module in `infra/droplet/variables.tf`, `infra/doks/va
 | `DIAGRAM_API_KEY`   | `string` | ✓        | —                                          | API key for the diagram service           |
 | `POSTGRES_PASSWORD` | `string` | ✓        | —                                          | Password for the local PostgreSQL         |
 | `app_yaml_path`     | `string` | —        | `null`                                     | Override path to ArgoCD Application YAML  |
+
+### `infra/aws/variables.tf`
+
+| Variable            | Type     | Required | Default          | Description                                                  |
+| ------------------- | -------- | -------- | ---------------- | ------------------------------------------------------------ |
+| `region`            | `string` | —        | `ap-southeast-1` | AWS region for all resources                                 |
+| `vpc_cidr`          | `string` | —        | `10.0.0.0/16`    | CIDR block for the VPC                                       |
+| `instance_type`     | `string` | —        | `t4g.micro`      | EC2 instance type (ARM/Graviton)                             |
+| `db_instance_class` | `string` | —        | `db.t4g.micro`   | RDS instance class (Free Tier single-AZ)                     |
+| `POSTGRES_PASSWORD` | `string` | ✓        | —                | RDS PostgreSQL admin password                                 |
+| `ALERT_EMAIL`       | `string` | ✓        | —                | Email subscribed to SNS for budget + CloudWatch alerts        |
 
 ---
 
@@ -328,9 +339,15 @@ Real AWS creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) are distinct from t
 
 ### Credentials required
 
-Requires Infisical secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (AWS account) and
+Requires Infisical secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (AWS account),
 
-the `TF_VAR_R2_*` backend pair. See `AWS.md` for the full architecture.
+`TF_VAR_ALERT_EMAIL` (SNS alert email), and the `TF_VAR_R2_*` backend pair.
+
+Web tier: EC2 instances in an Auto Scaling Group registered to an Application Load Balancer with
+ELB health checks. Static assets: private S3 bucket served through CloudFront via Origin Access
+Control (OAC). Alerting: a CloudWatch CPU alarm plus a zero-spend budget both publish to the SNS
+topic (`TF_VAR_ALERT_EMAIL` must confirm the subscription once). See `AWS.md` for the full
+architecture.
 
 ---
 

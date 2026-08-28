@@ -51,43 +51,43 @@ To elevate this project from a standard exam setup to a high-fidelity platform e
 
 ### 1. CloudFront + S3 (Static Asset Offloading)
 
-* **Status:** **Critical / Must-Have**
-* **Engineering:** Host static frontend assets in a private S3 bucket, served globally via CloudFront with Origin Access Control (OAC).
-* **Trade-off:** **Cache Latency.** Updates to files require manual invalidation or short TTLs.
-* **Resume Value:** High (demonstrates CDN mastery).
+- **Status:** **Critical / Must-Have**
+- **Engineering:** Host static frontend assets in a private S3 bucket, served globally via CloudFront with Origin Access Control (OAC).
+- **Trade-off:** **Cache Latency.** Updates to files require manual invalidation or short TTLs.
+- **Resume Value:** High (demonstrates CDN mastery).
 
 ### 2. CloudWatch Alarms + SNS (Monitoring)
 
-* **Status:** **Highly Recommended**
-* **Engineering:** Create CPU threshold alarms for the ASG that trigger SNS email notifications.
-* **Trade-off:** **Alert Noise.** Over-sensitive alarms result in email alerts during development.
-* **Resume Value:** Medium-High (demonstrates SRE fundamentals).
+- **Status:** **Highly Recommended**
+- **Engineering:** Create CPU threshold alarms for the ASG that trigger SNS email notifications.
+- **Trade-off:** **Alert Noise.** Over-sensitive alarms result in email alerts during development.
+- **Resume Value:** Medium-High (demonstrates SRE fundamentals).
 
 ### 3. SSM Parameter Store (Secrets)
 
-* **Status:** **Recommended**
-* **Engineering:** Inject database credentials at runtime via IAM Instance Profiles instead of hardcoded variables.
-* **Trade-off:** **Rate Limiting.** Standard parameters are free but throttled at 40 req/sec. Cache secrets on boot.
-* **Resume Value:** Medium (demonstrates production-grade security).
+- **Status:** **Recommended**
+- **Engineering:** Inject database credentials at runtime via IAM Instance Profiles instead of hardcoded variables.
+- **Trade-off:** **Rate Limiting.** Standard parameters are free but throttled at 40 req/sec. Cache secrets on boot.
+- **Resume Value:** Medium (demonstrates production-grade security).
 
 ---
 
 ## 3. Core Differences: Paid Enterprise Spec vs. Free Tier Spec
 
-| Component | Paid Enterprise Spec | Free Tier Guardrail Spec | Cost / Billing Reality |
-| --- | --- | --- | --- |
-| **Outbound Updates** | Private subnets routing via **NAT Gateway**. | Public subnets routing via **Internet Gateway (IGW)**. | **Saves ~$33.00/mo.** Auto-assigned public IPs leverage 750 free in-use IPv4 hours/month. Use `make destroy` daily. |
-| **Database Redundancy** | RDS Multi-AZ PostgreSQL. | RDS Single-AZ (`db.t3.micro`). | **Saves ~$15.00/mo.** Single-AZ stays within the 750 free monthly RDS hours. |
-| **Key Management** | Customer Managed KMS ($1.00/mo). | Default AWS Managed Key (`aws/rds`). | **Saves ~$1.00/mo.** Managed keys have no flat monthly fee. |
-| **Cost Protection** | Enterprise Cost Explorer. | **AWS Zero-Spend Budget**. | **100% Free.** Fires SNS alert if charges exceed $1.00. |
+| Component               | Paid Enterprise Spec                         | Free Tier Guardrail Spec                               | Cost / Billing Reality                                                                                              |
+| ----------------------- | -------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| **Outbound Updates**    | Private subnets routing via **NAT Gateway**. | Public subnets routing via **Internet Gateway (IGW)**. | **Saves ~$33.00/mo.** Auto-assigned public IPs leverage 750 free in-use IPv4 hours/month. Use `make destroy` daily. |
+| **Database Redundancy** | RDS Multi-AZ PostgreSQL.                     | RDS Single-AZ (`db.t3.micro`).                         | **Saves ~$15.00/mo.** Single-AZ stays within the 750 free monthly RDS hours.                                        |
+| **Key Management**      | Customer Managed KMS ($1.00/mo).             | Default AWS Managed Key (`aws/rds`).                   | **Saves ~$1.00/mo.** Managed keys have no flat monthly fee.                                                         |
+| **Cost Protection**     | Enterprise Cost Explorer.                    | **AWS Zero-Spend Budget**.                             | **100% Free.** Fires SNS alert if charges exceed $1.00.                                                             |
 
 ---
 
 ## 4. Free Tier Guardrails
 
-* **IPv4 Management:** App instances in public subnets receive auto-assigned public IPv4 addresses to pull packages directly via the Internet Gateway without needing an expensive NAT Gateway.
-* **Zero-Spend Budget:** Provision an `aws_budgets_budget` resource set to $1.00 USD with SNS email alerts as an automated safety net against unintended charges.
-* **Compute Optimization:** Defaults to `t3.micro` for general Free Tier safety, with `variables.tf` structured to allow optional ARM/Graviton (`t4g.micro`) deployment.
+- **IPv4 Management:** App instances in public subnets receive auto-assigned public IPv4 addresses to pull packages directly via the Internet Gateway without needing an expensive NAT Gateway.
+- **Zero-Spend Budget:** Provision an `aws_budgets_budget` resource set to $1.00 USD with SNS email alerts as an automated safety net against unintended charges.
+- **Compute Optimization:** Defaults to `t3.micro` for general Free Tier safety, with `variables.tf` structured to allow optional ARM/Graviton (`t4g.micro`) deployment.
 
 ---
 
@@ -97,7 +97,7 @@ To elevate this project from a standard exam setup to a high-fidelity platform e
 infra/aws/
 ├── versions.tf      # AWS Provider (~> 5.0) + Cloudflare R2 remote state backend
 ├── provider.tf      # Configures AWS provider default tags and region
-├── variables.tf     # Parameters (CIDR, t3.micro instances, etc.)
+├── variables.tf     # Parameters (CIDR, t3.micro instances, POSTGRES_PASSWORD, ALERT_EMAIL)
 ├── vpc.tf           # VPC, Subnets, Route Tables, Internet Gateway (IGW)
 ├── security.tf      # Chained Security Groups & IAM instance profiles
 ├── compute.tf       # Launch Template, ASG, and Application Load Balancer
@@ -113,13 +113,19 @@ infra/aws/
 
 ## 6. Engineering Gotchas (The "Real World" Gaps)
 
-* **Schema Seeding:** Manage database schema initialization via application startup routines rather than Terraform `null_resource` provisioners to prevent state drift.
-* **Dynamic Endpoint Injection:** RDS hostnames are generated at runtime. Use Terraform’s `templatefile()` function to inject `aws_db_instance.address` into your EC2 User Data script.
-* **IAM & SSM Startup Propagation Latency:** IAM Instance Profiles take a few seconds to propagate during EC2 initialization. Ensure your User Data script includes retry loops or `cloud-init` waits when fetching SSM parameter values.
-* **ALB Health Check Mismatch:** Match the ALB Target Group health check path to the exact route exposed by your web app to prevent the Auto Scaling Group from entering continuous replacement loops.
-* **State & Tooling Versioning:** Include a `.terraform-version` file in `infra/aws/` to keep your local CLI aligned with remote Cloudflare R2 state locks.
-* **Inline HCL vs. Public Modules:** Avoid public modules (`terraform-aws-modules/vpc`) in this specific repository to maintain explicit visibility over resource provisioning, prevent hidden billing side-effects (e.g., implicit NAT Gateways/KMS creation), and keep R2 remote state locks lean. Modularization should be deferred to shared enterprise module registries.
-- **Single-AZ to Multi-AZ RDS Strategy:** RDS is explicitly deployed Single-AZ to remain within the 750 free monthly RDS hours. However, zero-downtime failover is pre-architected: the `aws_db_subnet_group` spans multiple AZs, allowing instant conversion to a Multi-AZ standby pair simply by setting `multi_az = true` on `aws_db_instance`.
+- **Schema Seeding:** Manage database schema initialization via application startup routines rather than Terraform `null_resource` provisioners to prevent state drift.
+- **Dynamic Endpoint Injection:** RDS hostnames are generated at runtime. Use Terraform’s `templatefile()` function to inject `aws_db_instance.address` into your EC2 User Data script.
+- **IAM & SSM Startup Propagation Latency:** IAM Instance Profiles take a few seconds to propagate during EC2 initialization. Ensure your User Data script includes retry loops or `cloud-init` waits when fetching SSM parameter values.
+- **ALB Health Check Mismatch:** Match the ALB Target Group health check path to the exact route exposed by your web app to prevent the Auto Scaling Group from entering continuous replacement loops.
+- **State & Tooling Versioning:** Include a `.terraform-version` file in `infra/aws/` to keep your local CLI aligned with remote Cloudflare R2 state locks.
+- **Inline HCL vs. Public Modules:** Avoid public modules (`terraform-aws-modules/vpc`) in this specific repository to maintain explicit visibility over resource provisioning, prevent hidden billing side-effects (e.g., implicit NAT Gateways/KMS creation), and keep R2 remote state locks lean. Modularization should be deferred to shared enterprise module registries.
+
+* **Single-AZ to Multi-AZ RDS Strategy:** RDS is explicitly deployed Single-AZ to remain within the 750 free monthly RDS hours. However, zero-downtime failover is pre-architected: the `aws_db_subnet_group` spans multiple AZs, allowing instant conversion to a Multi-AZ standby pair simply by setting `multi_az = true` on `aws_db_instance`.
+
+- **CloudFront 403s — OAC is not enough:** `aws_cloudfront_origin_access_control` only signs requests; the S3 bucket still needs an `aws_s3_bucket_policy` granting `s3:GetObject` to the CloudFront principal, scoped via `aws:SourceArn`, or every origin request returns 403. This policy ships in `storage.tf`.
+- **SSM default IAM policy does not cover custom paths:** `AmazonSSMManagedInstanceCore` only grants read access under `parameter/aws/*`. Params stored under `/app/*` (DB credentials/endpoint) require an inline role policy (`security.tf`) with `ssm:GetParameter`/`GetParameters`/`GetParametersByPath` on `parameter/app/*` — otherwise EC2 gets `AccessDenied` at runtime.
+- **ASG health check must be ELB when registered to a target group:** setting `target_group_arns` alone does not flip the ASG to ELB health checks; add `health_check_type = "ELB"` (`compute.tf`) or instances that fail ALB health checks are never replaced.
+- **SNS delivers only to confirmed subscriptions:** the budget and CloudWatch alarm both publish to the `billing-alerts` topic, but an email subscription requires a one-time confirmation click (`TF_VAR_ALERT_EMAIL`); without confirming it, alerts are silently dropped.
 
 ---
 
