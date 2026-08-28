@@ -57,5 +57,6 @@ dump:
 		| gzip > ~/backups/diagramdb-$$(date +%F-%H%M).sql.gz
 	@echo "Backup saved: ~/backups/diagramdb-$$(date +%F-%H%M).sql.gz"
 
+# Retrieves and prints secrets variable name but not the value itself(left blank for security reasons).
 secrets:
 	infisical secrets generate-example-env --env=dev --path=/terraform
