@@ -24,3 +24,19 @@ resource "aws_sns_topic_subscription" "billing_alert_email" {
   protocol  = "email"
   endpoint  = var.alert_email
 }
+
+resource "aws_cloudwatch_metric_alarm" "asg_cpu" {
+  alarm_name          = "asg-cpu-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = "80"
+  dimensions = {
+    AutoScalingGroupName = aws_autoscaling_group.main.name
+  }
+
+  alarm_actions = [aws_sns_topic.billing_alerts.arn]
+}
