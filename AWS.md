@@ -164,3 +164,46 @@ make destroy MOD=aws
 | ALB HTTP (redirect) | `http://alb.seekeru.tech`  | 301 -> HTTPS |
 | CloudFront (assets) | `https://d14f3y8b1rk8te.cloudfront.net` | serves S3 static assets once uploaded |
 | RDS PostgreSQL      | `main-db` single-AZ, user `dbadmin` | private, not publicly reachable |
+
+---
+
+## 8. Upgrade Paths & Revalidation
+
+As-built state is **verified and drift-free** — `terraform plan` reports `No changes. Infrastructure matches the configuration.` with all 39 resources in state, `fmt`/`validate` clean. The following are optional, ranked by value-per-cost.
+
+### High value, low cost (recommended next)
+
+| Upgrade | What it does | Cost |
+|---------|--------------|------|
+| **Seed S3 + CloudFront** | Upload an `index.html`/assets to the `static_assets` bucket so CloudFront (`d14f3y8b1rk8te.cloudfront.net`) stops 403ing. | Free |
+| **CloudFront custom domain + HTTPS** | Add e.g. `static.seekeru.tech` with an ACM cert in `us-east-1` (CloudFront requires that region — a known cross-region gotcha), same Cloudflare CNAME-validation flow as the ALB. | Free |
+| **Wire app → RDS** | Have the EC2 user-data/app read `/app/db_endpoint` + `/app/POSTGRES_PASSWORD` from SSM (IAM now permits it) to form a live 3-tier app instead of static nginx. | Free |
+| **S3 versioning + lifecycle** | Guard against accidental asset deletion; add the `.terraform-version` file AWS.md §6 recommends. | Free |
+
+### Medium value
+| Upgrade | Cost |
+|---------|------|
+| **Live Multi-AZ failover** | Flip `multi_az = true` when ready to spend credits; the DB subnet group already spans AZs. | ~$80/mo |
+| **The 3-tier story** | Combine HTTPS + app→RDS wiring into a demoable full-stack URL. | Free |
+
+### Deferred / not recommended for a sandbox
+| Upgrade | Why not |
+|---------|---------|
+| NAT + private subnets | ~$33/mo; the droplet tunnel already fronts the root domain; conflicts with free-tier cost goal. |
+| Larger instances / more storage | Burns the ~\$200 credit balance for negligible demo value. |
+
+### Revalidation commands
+```bash
+# Drift check (must report No changes)
+make plan MOD=aws
+
+# Static health
+make validate MOD=aws && make fmt MOD=aws
+
+# Live endpoints
+curl -s -o /dev/null -w '%{http_code}\n' https://alb.seekeru.tech/        # expect 200
+curl -s -o /dev/null -w '%{http_code} -> %{redirect_url}\n' http://alb.seekeru.tech/  # expect 301 -> https
+
+# Note: the raw ELB hostname returns 000 on https — correct, its cert only binds to the domain.
+```
+

@@ -361,6 +361,7 @@ to issue the cert. See `AWS.md` for the full architecture.
 - **Provider vs. R2 endpoint:** because the R2 state backend injects `AWS_ENDPOINT_URL_S3`, the AWS provider must override `endpoints.s3` to `https://s3.<region>.amazonaws.com` (`provider.tf`), or real `aws_s3_bucket` calls hit R2 and fail with `access key has length 20, should be 32`.
 - **DB user:** `dbadmin` (PostgreSQL reserves `admin`).
 - **Apply is non-interactive:** `make apply MOD=aws` prompts; use `terraform -chdir=infra/aws apply -auto-approve` (or pipe) for headless runs.
+- **Upgrade + revalidation matrix:** see `AWS.md` §8 for ranked upgrade paths and the drift-check commands.
 
 ---
 
