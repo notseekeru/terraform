@@ -22,8 +22,8 @@ variable "POSTGRES_PASSWORD" {
   sensitive = true
 }
 
-variable "alert_email" {
+variable "ALERT_EMAIL" {
   type      = string
   sensitive = true
-  # Injected via infisical secret TF_VAR_alert_email
+  # Injected via infisical secret ALERT_EMAIL (TF_VAR_ALERT_EMAIL)
 }

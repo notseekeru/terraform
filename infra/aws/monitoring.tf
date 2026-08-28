@@ -22,7 +22,7 @@ resource "aws_budgets_budget" "zero_spend" {
 resource "aws_sns_topic_subscription" "billing_alert_email" {
   topic_arn = aws_sns_topic.billing_alerts.arn
   protocol  = "email"
-  endpoint  = var.alert_email
+  endpoint  = var.ALERT_EMAIL
 }
 
 resource "aws_cloudwatch_metric_alarm" "asg_cpu" {
