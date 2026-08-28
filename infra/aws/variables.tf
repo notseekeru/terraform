@@ -33,3 +33,11 @@ variable "credit_cap_usd" {
   default = 190.0
   # Free-tier promotional credit balance (~$100 + $100 explore); alarm before exhaustion
 }
+
+variable "alb_domain" {
+  type    = string
+  default = ""
+  # Custom domain (e.g. app.example.tech) for ACM HTTPS on the ALB.
+  # Empty => ALB stays HTTP:80 only; DNS is managed in Cloudflare,
+  # so supply the value at apply time via -var or TF_VAR_alb_domain.
+}
