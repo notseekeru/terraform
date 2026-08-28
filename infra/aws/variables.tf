@@ -27,3 +27,9 @@ variable "ALERT_EMAIL" {
   sensitive = true
   # Injected via infisical secret ALERT_EMAIL (TF_VAR_ALERT_EMAIL)
 }
+
+variable "credit_cap_usd" {
+  type    = number
+  default = 190.0
+  # Free-tier promotional credit balance (~$100 + $100 explore); alarm before exhaustion
+}
