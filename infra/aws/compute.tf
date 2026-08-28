@@ -61,11 +61,24 @@ resource "aws_autoscaling_group" "main" {
   vpc_zone_identifier = aws_subnet.public[*].id
   target_group_arns   = [aws_lb_target_group.main.arn]
   health_check_type   = "ELB"
-  min_size            = 2
-  max_size            = 2
+  min_size            = 1
+  max_size            = 3
 
   launch_template {
     id      = aws_launch_template.main.id
     version = "$Latest"
+  }
+}
+
+resource "aws_autoscaling_policy" "cpu" {
+  name                   = "cpu-target-tracking"
+  policy_type            = "TargetTrackingScaling"
+  autoscaling_group_name = aws_autoscaling_group.main.name
+
+  target_tracking_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ASGAverageCPUUtilization"
+    }
+    target_value = 50.0
   }
 }
