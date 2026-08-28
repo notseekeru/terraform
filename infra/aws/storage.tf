@@ -11,6 +11,29 @@ resource "aws_s3_bucket_public_access_block" "static_assets" {
   restrict_public_buckets = true
 }
 
+resource "aws_s3_bucket_policy" "static_assets" {
+  bucket = aws_s3_bucket.static_assets.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "CloudFront-OAC-GetObject"
+      Effect    = "Allow"
+      Principal = { Service = "cloudfront.amazonaws.com" }
+      Action    = "s3:GetObject"
+      Resource = [
+        aws_s3_bucket.static_assets.arn,
+        "${aws_s3_bucket.static_assets.arn}/*",
+      ]
+      Condition = {
+        StringEquals = {
+          "aws:SourceArn" = aws_cloudfront_distribution.s3_dist.arn
+        }
+      }
+    }]
+  })
+}
+
 resource "aws_cloudfront_origin_access_control" "oac" {
   name                              = "s3-oac"
   origin_access_control_origin_type = "s3"
@@ -29,9 +52,9 @@ resource "aws_cloudfront_distribution" "s3_dist" {
   }
 
   default_cache_behavior {
-    allowed_methods  = ["GET", "HEAD"]
-    cached_methods   = ["GET", "HEAD"]
-    target_origin_id = "s3-origin"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "s3-origin"
     viewer_protocol_policy = "redirect-to-https"
     forwarded_values {
       query_string = false
