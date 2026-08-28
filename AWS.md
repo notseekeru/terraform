@@ -127,6 +127,9 @@ infra/aws/
 - **SSM default IAM policy does not cover custom paths:** `AmazonSSMManagedInstanceCore` only grants read access under `parameter/aws/*`. Params stored under `/app/*` (DB credentials/endpoint) require an inline role policy (`security.tf`) with `ssm:GetParameter`/`GetParameters`/`GetParametersByPath` on `parameter/app/*` — otherwise EC2 gets `AccessDenied` at runtime.
 - **ASG health check must be ELB when registered to a target group:** setting `target_group_arns` alone does not flip the ASG to ELB health checks; add `health_check_type = "ELB"` (`compute.tf`) or instances that fail ALB health checks are never replaced.
 - **SNS delivers only to confirmed subscriptions:** the budget and CloudWatch alarm both publish to the `billing-alerts` topic, but an email subscription requires a one-time confirmation click (`TF_VAR_ALERT_EMAIL`); without confirming it, alerts are silently dropped.
+* **AWS_ENDPOINT_URL_S3 collides provider S3 with R2:** the R2 state-backend endpoint is injected as `AWS_ENDPOINT_URL_S3`, but the AWS provider also reads that env var, routing real `aws_s3_bucket`/`aws_s3_bucket_policy` calls to R2 — which rejects AWS `AKIA` keys with `InvalidArgument: access key has length 20, should be 32`. Fix in `provider.tf`: pin `endpoints.s3` to `https://s3.<region>.amazonaws.com` so buckets land in real AWS while the backend keeps using R2.
+* **RDS username 'admin' is reserved:** PostgreSQL rejects `MasterUsername = admin`. Use `dbadmin` (or any non-reserved word).
+* **ALB with a domain means a manual cert-validation dance:** the ACM cert is DNS-validated via a CNAME added by hand in Cloudflare (not Route53, since DNS is external). `aws_acm_certificate_validation` + the listener's `depends_on` make `:443` wait for `ISSUED` — add the validation CNAME from the `alb_domain_validation_cname` output before the apply can bind HTTPS.
 
 ---
 
@@ -139,10 +142,25 @@ make init MOD=aws
 # 2. Preview the AWS architecture blueprint
 make plan MOD=aws
 
-# 3. Spin up the infrastructure
-make apply MOD=aws
+# 3. Spin up the infrastructure (non-interactive approve)
+export TF_VAR_alb_domain="alb.seekeru.tech"   # enables ACM cert + :443 + HTTP->HTTPS
+make apply MOD=aws # or: terraform -chdir=infra/aws apply -auto-approve
 
-# 4. Burn it down cleanly when done studying to guarantee $0.00 spend
+# 4. HTTPS/DNS in Cloudflare (one-time, not terraform-managed):
+#    a. Add CNAME: alb.seekeru.tech -> <terraform output alb_dns_name> (DNS only)
+#    b. Add CNAME from <terraform output alb_domain_validation_cname> so ACM cert ISSUES
+#    c. Cert ISSUED -> :443 listener binds -> https://alb.seekeru.tech serves
+
+# 5. Burn it down cleanly when done studying to guarantee \$0.00 spend
 make destroy MOD=aws
 
 ```
+
+### Deployed endpoints (as of this writing)
+
+| Endpoint | URL | Status |
+|----------|-----|--------|
+| ALB HTTPS (app)    | `https://alb.seekeru.tech` | 200 (nginx) |
+| ALB HTTP (redirect) | `http://alb.seekeru.tech`  | 301 -> HTTPS |
+| CloudFront (assets) | `https://d14f3y8b1rk8te.cloudfront.net` | serves S3 static assets once uploaded |
+| RDS PostgreSQL      | `main-db` single-AZ, user `dbadmin` | private, not publicly reachable |

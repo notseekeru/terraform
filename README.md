@@ -355,6 +355,13 @@ HTTPS is optional: set `alb_domain` (e.g. `app.example.tech`) to get an ACM cert
 listener, and an HTTP→HTTPS redirect. Add the returned `alb_domain_validation_cname` in Cloudflare
 to issue the cert. See `AWS.md` for the full architecture.
 
+### Deployment notes (verified)
+
+- **Live endpoints:** `https://alb.seekeru.tech` (200, nginx) · `http://alb.seekeru.tech` (301 → HTTPS) · CloudFront `https://d14f3y8b1rk8te.cloudfront.net`.
+- **Provider vs. R2 endpoint:** because the R2 state backend injects `AWS_ENDPOINT_URL_S3`, the AWS provider must override `endpoints.s3` to `https://s3.<region>.amazonaws.com` (`provider.tf`), or real `aws_s3_bucket` calls hit R2 and fail with `access key has length 20, should be 32`.
+- **DB user:** `dbadmin` (PostgreSQL reserves `admin`).
+- **Apply is non-interactive:** `make apply MOD=aws` prompts; use `terraform -chdir=infra/aws apply -auto-approve` (or pipe) for headless runs.
+
 ---
 
 ## ArgoCD
