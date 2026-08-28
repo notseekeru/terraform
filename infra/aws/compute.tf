@@ -28,9 +28,14 @@ resource "aws_lb_listener" "main" {
   }
 }
 
+
+data "aws_ssm_parameter" "al2023_arm64" {
+  # Latest Amazon Linux 2023 ARM64 (Graviton) AMI, per instance_type default t4g.micro
+  name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64"
+}
 resource "aws_launch_template" "main" {
   name_prefix   = "app-lt-"
-  image_id      = "ami-047126e828d5d4d3d" # Amazon Linux 2023 (ap-southeast-1)
+  image_id      = data.aws_ssm_parameter.al2023_arm64.value
   instance_type = var.instance_type
 
   iam_instance_profile {
