@@ -13,7 +13,7 @@ backend_config = -backend-config="bucket=$$TF_VAR_R2_BUCKET" \
 	-backend-config="access_key=$$TF_VAR_R2_ACCESS_KEY_ID" \
 	-backend-config="secret_key=$$TF_VAR_R2_SECRET_ACCESS_KEY"
 
-.PHONY: fmt validate init upgradeinit plan apply destroy migrate dump secrets
+.PHONY: fmt validate init upgradeinit reconfigure plan apply destroy migrate dump secrets
 
 fmt:
 	terraform -chdir=infra/$(MOD) fmt
@@ -47,6 +47,14 @@ apply:
 destroy:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
 		terraform -chdir=infra/$(MOD) destroy
+
+# Discard the local backend binding and re-read remote state with the current
+# backend_config. Use this to recover from a stale cached backend (e.g. a module
+# inited before backend_config carried the R2 access/secret keys), without
+# rewriting remote state (unlike migrate).
+reconfigure:
+	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
+		'terraform -chdir=infra/$(MOD) init -reconfigure $(backend_config)'
 
 # One-time (per module): push local state to R2. Only needed on first backend setup.
 migrate:
