@@ -13,7 +13,7 @@ backend_config = -backend-config="bucket=$$TF_VAR_R2_BUCKET" \
 	-backend-config="access_key=$$TF_VAR_R2_ACCESS_KEY_ID" \
 	-backend-config="secret_key=$$TF_VAR_R2_SECRET_ACCESS_KEY"
 
-.PHONY: fmt validate init upgradeinit reconfigure plan apply destroy migrate dump secrets
+.PHONY: fmt validate init upgradeinit reconfigure plan apply destroy migrate dump secrets verify-db-auth
 
 fmt:
 	terraform -chdir=infra/$(MOD) fmt
@@ -68,6 +68,13 @@ dump:
 	@kubectl exec -n database svc/postgres -- pg_dump -U diagram -d diagramdb \
 		| gzip > ~/backups/diagramdb-$$(date +%F-%H%M).sql.gz
 	@echo "Backup saved: ~/backups/diagramdb-$$(date +%F-%H%M).sql.gz"
+
+verify-db-auth:
+	@echo "Authenticating as diagram over the Service DNS (TCP path clients use)..."
+	@infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
+	  kubectl run db-auth-probe --rm -i --restart=Never --image=postgres:16-alpine -- \
+	  psql "postgresql://diagram:$$POSTGRES_PASSWORD@postgres.database.svc.cluster.local:5432/diagramdb" -c 'select 1'
+	@echo "OK: role authenticates over TCP"
 
 # Retrieves and prints secrets variable name but not the value itself(left blank for security reasons).
 secrets:
