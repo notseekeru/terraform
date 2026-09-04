@@ -48,41 +48,19 @@ destroy:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
 		terraform -chdir=infra/$(MOD) destroy
 
-# ==========================================================================
-# AWS-NUKE — ACCOUNT-WIDE RESET (IRRECOVERABLE for everything it touches)
-# ==========================================================================
 # Sweeps billable drift across the account via nuke-config.yaml. aws-nuke has
 # NO tag-based opt-out. the config excludes KMS + IAM so this never orphans the
 # credential/encryption chain that reprovisions the stack (see nuke-config.yaml,
 # resource-types.excludes). Still: confirm `make destroy` first, because anything
 # Terraform built that is NOT in the exclude set WILL be deleted out-of-band,
 # desyncing remote state in R2.
-#
-#   make nuke-list      dry-run: prints what WOULD be deleted, deletes nothing
-#   <real nuke command> the destructive reset: deliberately NOT a make target
-#
-# Config: nuke-config.yaml   Common creds via the standard Infisical env.
 NUKE_CFG ?= nuke-config.yaml
 
 nuke-list:
 	@echo '== AWS-NUKE DRY RUN (nothing deleted) =='
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-		aws-nuke -c $(NUKE_CFG) --no-dry-run=false
+		aws-nuke -c $(NUKE_CFG) --no-dry-run
 
-# Full reset is intentionally manual — NOT exposed as a `make nuke` phony. A
-# one-way door belongs to an explicit command, not a muscle-memory target:
-#
-#     make destroy                     # 1) terraform destroy the managed stack
-#     make nuke-list                   # 2) dry-run: review the full deletion list
-#     infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-#         aws-nuke -c nuke-config.yaml --no-dry-run   # 3) explicit destructive reset
-#
-# If you later want `make nuke` gated anyway, fold it into the .PHONY and add a
-# `git precommit`-hosted guard. This is deliberately left out of README quickstart.
-# Discard the local backend binding and re-read remote state with the current
-# backend_config. Use this to recover from a stale cached backend (e.g. a module
-# inited before backend_config carried the R2 access/secret keys), without
-# rewriting remote state (unlike migrate).
 reconfigure:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
 		'terraform -chdir=infra/$(MOD) init -reconfigure $(backend_config)'
