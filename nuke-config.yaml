@@ -1,0 +1,68 @@
+# aws-nuke account-wide reset config (DELIBERATE destruction of billable drift)
+#
+# Semantics: this account is a throwaway free-tier sandbox. aws-nuke has NO
+# tag-based opt-out, so it is NOT the tool for sparing Terraform-managed infra.
+#
+# Reset flow:
+#   1. make destroy        terraform destroy the managed stack (R2 state intact)
+#   2. make nuke-list      dry-run against the same creds; review what would die
+#   3. explicit full reset (below) — never a bare `make nuke`
+#
+# The watchlist: full-account wipe would ALSO take KMS keys + the IAM user whose
+# static access key (Infisical-injected AWS_* ) lets Terraform provision, and any
+# KMS key encrypting secrets. That orphans the credential/reprovision path, so
+# KMS + IAM are excluded below (see resource-types). A sweep therefore targets
+# billable drift, NOT the identity/encryption needed to rebuild.
+# References: https://github.com/rebuy-de/aws-nuke
+
+regions:
+  - global            # required for global service types (IAM, Route53, ...)
+  - ap-southeast-1    # infra/aws provider region (variables.tf: var.region)
+
+# account-blocklist = accounts that must NEVER be touched. Our sandbox account is
+# intentionally NOT blocklisted (that would abort every run). Entry kept as an
+# explicit placeholder so destructive runs can only come from the operator's own
+# chosen account through the guarded flow above.
+account-blocklist:
+  - "000000000000"   # placeholder — no real account is blocklisted
+
+# --------------------------------------------------------------------------
+# resource-types.excludes: resource types a full sweep will NEVER touch
+# (even when using --no-dry-run). Present here so the sweep cannot orphan the
+# identity/encryption needed to reprovision the stack. Consequence: IAM + KMS
+# drift is NOT cleaned by aws-nuke — handle it via `make destroy` or by hand.
+#
+# Names are aws-nuke canonical types (registrar in resources/*.go).
+# Excluded namespaces:
+#   KMS    : AWSKMSKey-holder; deleting leaves encrypted secrets unreadable.
+#   IAM    : the terraform IAM user + static access key (provider auth), plus
+#            related policy/role/profile objects it depends on.
+resource-types:
+  excludes:
+    # --- KMS: encryption chain for secrets stored/used by the stack ---
+    - KMSAlias
+    - KMSKey
+    # --- IAM: identity that lets Terraform provision (static access key).
+    # Excluding the whole IAM namespace is intentional & conservative: IAM drift
+    # is near-zero-cost, and a faithful wipe would cut the creds mid-flight. ---
+    - IAMUser
+    - IAMUserAccessKey      # the AWS_ACCESS_KEY_ID used by `make apply`
+    - IAMUserPolicy
+    - IAMUserPolicyAttachment
+    - IAMGroup
+    - IAMGroupPolicy
+    - IAMGroupPolicyAttachment
+    - IAMUserGroupAttachment
+    - IAMRole
+    - IAMRolePolicy
+    - IAMRolePolicyAttachment
+    - IAMPolicy
+    - IAMInstanceProfile
+    - IAMInstanceProfileRole
+    - IAMLoginProfile
+    - IAMVirtualMFADevice
+    - IAMSAMLProvider
+    - IAMOpenIDConnectProvider
+    - IAMServerCertificate
+    - IAMSigningCertificate
+    - IAMUserSSHPublicKey

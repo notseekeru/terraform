@@ -15,6 +15,7 @@
           argocd
           doctl
           infisical
+          aws-nuke
         ];
       };
     };
