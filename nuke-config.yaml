@@ -66,3 +66,12 @@ resource-types:
     - IAMServerCertificate
     - IAMSigningCertificate
     - IAMUserSSHPublicKey
+
+# --------------------------------------------------------------------------
+# accounts: explicit allowlist. aws-nuke refuses to scan any account not listed
+# here (seen first-run: 'account ID ... isn't listed in the config. Aborting').
+# Listing an account = operator declares it a non-prod target and opts into the
+# sweep. The sandbox account below carries an alias (no 'prod'), satisfying the
+# safety check that requires a non-prod alias.
+accounts:
+  566112927489: {}
