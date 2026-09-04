@@ -117,7 +117,7 @@ terraform/
 
 ## Makefile Workflow
 
-All targets accept `MOD=droplet`, `MOD=doks`, `MOD=k3s`, or `MOD=aws`. The `infra/` prefix and Infisical secret flow are baked into each target. Sensitive vars (incl. the R2 credentials backing state) come from `infisical run`. Backend-facing targets (`init`, `upgradeinit`, `migrate`) exec terraform through `/bin/sh -c` so the `TF_VAR_R2_*` refs expand from infisical's injected env; plan/apply/destroy exec directly so the AWS provider sees native `AWS_*` creds.
+Module targets accept `MOD=droplet`, `MOD=doks`, `MOD=k3s`, or `MOD=aws`. The `infra/` prefix and Infisical secret flow are baked into each target. Sensitive vars (incl. the R2 credentials backing state) come from `infisical run`. Backend-facing targets (`init`, `upgradeinit`, `migrate`) exec terraform through `/bin/sh -c` so the `TF_VAR_R2_*` refs expand from infisical's injected env; plan/apply/destroy exec directly so the AWS provider sees native `AWS_*` creds. `nuke-list` is account-scoped (ignores `MOD`) and runs from the repo root.
 
 | Target             | Command                                                                             | Description                              |
 | ------------------ | ----------------------------------------------------------------------------------- | ---------------------------------------- |
@@ -130,6 +130,7 @@ All targets accept `MOD=droplet`, `MOD=doks`, `MOD=k3s`, or `MOD=aws`. The `infr
 | `make validate`    | `terraform -chdir=infra/$(MOD) validate`                                            | Validate configuration                   |
 | `make migrate`     | `infisical run -- /bin/sh -c 'terraform ... init -migrate-state $(backend_config)'` | One-time: push local state to R2         |
 | `make dump`        | `kubectl exec ... pg_dump \| gzip > ~/backups/`                                     | Backup diagramdb from local k3s postgres |
+| `make nuke-list`   | `infisical run -- aws-nuke -c nuke-config.yaml (dry-run)`                     | Dry-run aws-nuke sweep (deletes nothing) |
 
 **Variables:**
 
@@ -369,6 +370,7 @@ direnv allow
 | `argocd`    | ArgoCD CLI                  |
 | `doctl`     | DigitalOcean CLI (fallback) |
 | `infisical` | Secret management CLI       |
+| `aws-nuke`  | Last-resort account cleanup |
 
 ---
 
@@ -391,9 +393,41 @@ direnv allow
 make destroy MOD=droplet
 make destroy MOD=doks
 make destroy MOD=k3s
+make destroy MOD=aws
 ```
 
 Each module is destroyed independently.
+
+### Cost control (do NOT skip)
+
+A controlled teardown — `make destroy MOD=aws` — not aws-nuke, is how you exit the
+AWS module cleanly: `terraform destroy` tears down what it manages in dependency
+order and empties the R2-backed state so resources cannot be re-created by a
+stale `plan`. Cost alarms (in `infra/aws/monitoring.tf`) are your real tripwire:
+`zero_spend` (100% of limit) and `credit_cap` (95% actual / 90% forecasted)
+email via the `billing-alerts` SNS topic. Trust destroy + alarms for normal exits.
+
+### aws-nuke — last-resort orphan cleanup (NOT routine teardown)
+
+`aws-nuke` is only for removing resources **not tracked in Terraform state**
+(manual console experiments, leaked drift) that `destroy` will never touch. It
+has no tag-based opt-out and no `mfa` gate is configured, so it is a genuinely
+dangerous one-way door.
+
+- `make nuke-list` — **dry-run only**; prints what WOULD be deleted, deletes nothing.
+- Destructive reset is deliberately **not** a `make` target; run it by hand:
+
+```bash
+make destroy MOD=aws
+# then, only after reviewing make nuke-list output:
+infisical run --path /terraform --env dev -- \
+    aws-nuke -c nuke-config.yaml --no-dry-run
+```
+
+- The config fences KMS + IAM (`resource-types.excludes` in `nuke-config.yaml`) so
+  the sweep won't orphan the credential chain Terraform needs to reprovision.
+- Nuke does **not** stop future bills. Prevent cost by keeping provisioning in
+  Terraform and using the alarms above as the tripwire.
 
 ---
 
