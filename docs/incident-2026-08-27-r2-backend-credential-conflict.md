@@ -1,20 +1,25 @@
-# R2 State Backend vs AWS Provider: Credential Collision
+# R2 State Backend vs AWS Provider: Credential Collision (2026-08-27)
 
-## Problem
+> Root-cause note for the `InvalidAccessKeyId` / "value cannot be empty" failures
+> on `init`/`plan`. Config-change bug, no deployment or data impact.
 
-Terraform reported `InvalidAccessKeyId` on the AWS provider and/or backend
-"value cannot be empty" on `init`, caused by two distinct credentials
-colliding on the `AWS_ACCESS_KEY_ID` env var and the S3 backend `endpoint`
-deprecation.
+## Summary
 
-### Setup
+Terraform reported `InvalidAccessKeyId` on the AWS provider and/or
+"value cannot be empty" on the R2 backend `init`. Caused by two distinct
+credentials colliding on the native `AWS_ACCESS_KEY_ID` env var, compounded by
+two further setup mistakes. No config was corrupted; no state was lost.
 
-* **State backend** = Cloudflare R2 (S3-compatible), bucket `terraform-state`.
-* **Provisioning target** = real AWS account (`AKIA...` keys).
-* Secrets live in **Infisical** (`dev`, path `/terraform`), injected unprefixed
+## Setup
+
+- **State backend** = Cloudflare R2 (S3-compatible), bucket `terraform-state`.
+- **Provisioning target** = real AWS account (`AKIA...` keys).
+- Secrets live in **Infisical** (`dev`, path `/terraform`), injected unprefixed
   by `infisical run`.
 
-### Root cause 1 — name collision
+## Root Causes
+
+### Root cause 1 — Name collision
 
 Infisical held **two** credential pairs:
 
@@ -54,9 +59,11 @@ The value cannot be empty or all whitespace
 The S3 backend `endpoint` key is deprecated in favour of `endpoints.s3`, which
 can be sourced from the env var `AWS_ENDPOINT_URL_S3`.
 
-## Fix (applied)
+## Resolution
 
-1. **Rename Infisical secrets** so every credential namespace is unambiguous:
+Applied fix — split the namespaces so every credential is unambiguous:
+
+1. **Rename Infisical secrets**
 
    | Secret | Now holds | Target |
    |---|---|---|
@@ -68,15 +75,15 @@ can be sourced from the env var `AWS_ENDPOINT_URL_S3`.
    | `TF_VAR_R2_BUCKET` | `terraform-state` | bucket |
    | `AWS_ENDPOINT_URL_S3` | `https://<acct>.r2.cloudflarestorage.com` | endpoint |
 
-2. **Makefile** (`Makefile`):
-   * `backend_config` passes flat, non-deprecated keys only:
+2. **Makefile** (`Makefile`)
+   - `backend_config` passes flat, non-deprecated keys only:
      `bucket`, `key`, `region`, `access_key`, `secret_key` (from `TF_VAR_R2_*`).
-   * R2 URL injected via env `AWS_ENDPOINT_URL_S3` (modern `endpoints.s3` source),
+   - R2 URL injected via env `AWS_ENDPOINT_URL_S3` (modern `endpoints.s3` source),
      not the deprecated `endpoint` backend-config.
-   * Backend-only targets (`init`, `upgradeinit`, `migrate`) exec terraform
+   - Backend-only targets (`init`, `upgradeinit`, `migrate`) exec terraform
      through `/bin/sh -c '...'` so the `$TF_VAR_R2_*` references expand from
      infisical's injected env.
-   * `plan` / `apply` / `destroy` stay un-wrapped → provider reads native
+   - `plan` / `apply` / `destroy` stay un-wrapped → provider reads native
      `AWS_ACCESS_KEY_ID` (real AWS). **No** R2 override leaks into them.
 
 ## Verification
@@ -92,17 +99,26 @@ Note: `infra/<module>/.terraform/terraform.tfstate` is a **local backend-cache
 pointer** (version/backend only, no resources) — not state. Real state lives in
 the R2 bucket.
 
-## Guardrails (to avoid regression)
+## Prevention
 
-* Never store R2 creds under a bare `AWS_*` name in Infisical — keep them under
-  `TF_VAR_R2_*`.
-* Never put a `VAR=$other` prefix on an `infisical run --` command (no shell,
-  direct exec). Wrap in `/bin/sh -c` if shell expansion is required.
-* Use `AWS_ENDPOINT_URL_S3` (or `endpoints.s3` in HCL), not `endpoint`.
-* Commits: `dd38d69`, `1dc43da`.
+Ordered guardrails to avoid regression:
+
+1. **Namespace R2 creds.** Never store R2 creds under a bare `AWS_*` name in
+   Infisical — keep them under `TF_VAR_R2_*`.
+2. **No shell-prefix on exec.** Never put a `VAR=$other` prefix on an
+   `infisical run --` command (no shell, direct exec). Wrap in `/bin/sh -c` if
+   shell expansion is required.
+3. **Use modern endpoint config.** Use `AWS_ENDPOINT_URL_S3` (or `endpoints.s3`
+   in HCL), not `endpoint`.
+4. **Related commits**: `dd38d69`, `1dc43da`.
 
 ## Security note
 
 The credential rename was performed by transcribing values previously dumped by
 the CLI. **Rotate** `AWS_*`, `TF_VAR_R2_*`, and any Infisical token whose value
 went through this process.
+
+## Labels
+
+`type:config` · `cause:credential-name-collision` · `component:terraform-backend`
+· `environment:homelab` · `resolved`

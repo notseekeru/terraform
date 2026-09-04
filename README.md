@@ -33,7 +33,7 @@ State is stored in a **Cloudflare R2 bucket** (`s3` backend, S3-compatible) — 
 | `k3s`     | `terraform/k3s/terraform.tfstate`     | s3      |
 | `aws`     | `terraform/aws/terraform.tfstate`     | s3      |
 
-**Backend config** lives per module in `versions.tf`. The R2 bucket, key, and access/secret keys are passed from Infisical env vars at `init` time via `-backend-config` (`TF_VAR_R2_BUCKET`, `TF_VAR_R2_ACCOUNT_ID`, `TF_VAR_R2_ACCESS_KEY_ID`, `TF_VAR_R2_SECRET_ACCESS_KEY`); the R2 endpoint URL is injected as `AWS_ENDPOINT_URL_S3` (env-var source for the s3 backend's `endpoints.s3`). The AWS-specific module (`infra/aws`) additionally uses real AWS credentials via the native `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` env vars for its provider — kept separate from the R2 creds. See `docs/R2-backend-credential-conflict.md` for the collision that motivated this split.
+**Backend config** lives per module in `versions.tf`. The R2 bucket, key, and access/secret keys are passed from Infisical env vars at `init` time via `-backend-config` (`TF_VAR_R2_BUCKET`, `TF_VAR_R2_ACCOUNT_ID`, `TF_VAR_R2_ACCESS_KEY_ID`, `TF_VAR_R2_SECRET_ACCESS_KEY`); the R2 endpoint URL is injected as `AWS_ENDPOINT_URL_S3` (env-var source for the s3 backend's `endpoints.s3`). The AWS-specific module (`infra/aws`) additionally uses real AWS credentials via the native `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` env vars for its provider — kept separate from the R2 creds. See `docs/incident-2026-08-27-r2-backend-credential-conflict.md` for the collision that motivated this split.
 
 **First-time setup** (per module, or after changing backend config):
 
@@ -46,7 +46,7 @@ The backend binding is cached in `infra/<MOD>/.terraform/terraform.tfstate` afte
 **Caveats**
 
 - Remote state gives Terraform **native locking** — concurrent runs against a module are guarded.
-- Splitting R2 creds (`TF_VAR_R2_*` + `AWS_ENDPOINT_URL_S3`) from real AWS creds (`AWS_*`) avoids the `InvalidAccessKeyId` collision documented in `docs/R2-backend-credential-conflict.md`.
+- Splitting R2 creds (`TF_VAR_R2_*` + `AWS_ENDPOINT_URL_S3`) from real AWS creds (`AWS_*`) avoids the `InvalidAccessKeyId` collision documented in `docs/incident-2026-08-27-r2-backend-credential-conflict.md`.
 - `infra/<MOD>/terraform.tfstate*` local files are gitignored; after migration the primary state is in R2 only.
 
 ---
@@ -334,7 +334,9 @@ The manifest path defaults to `${path.module}/../../../gitops/app.yaml` (resolve
 
 Database strategy varies by module: **DO Managed PG** for `doks` (see [DOKS Cluster](#doks-cluster-cloud)), **self-hosted StatefulSet** for `k3s` (see [K3s Module](#k3s-module-local)).
 The connection string and API key are injected into the `diagram-secrets` Kubernetes secret consumed by application pods.
-
+Related docs:
+- `docs/postgres-rotation.md` — the DB role-password rotation runbook (rotate via Terraform/Infisical **only**, never a manual `ALTER USER`).
+- `docs/incident-2026-09-03-postgres-credential-mismatch.md` — root cause: a manual `ALTER USER` split the role password from `diagram-secrets` and broke backend auth over TCP (no data loss).
 ---
 
 ## Kubernetes Secrets
@@ -380,7 +382,7 @@ direnv allow
 - The DO token is consumed via `var.DO_TOKEN` (marked `sensitive = true`).
 - SSH keys are registered with Droplets at provision time — no post-provision injection.
 - GitHub PAT and credentials are written directly to Kubernetes secrets — they never leave the Terraform state.
-- R2 state-backend creds are namespaced `TF_VAR_R2_*` (+ `AWS_ENDPOINT_URL_S3`) and kept distinct from the real AWS provider creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) to avoid the collision in `docs/R2-backend-credential-conflict.md`.
+- R2 state-backend creds are namespaced `TF_VAR_R2_*` (+ `AWS_ENDPOINT_URL_S3`) and kept distinct from the real AWS provider creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) to avoid the collision in `docs/incident-2026-08-27-r2-backend-credential-conflict.md`.
 - `secrets.tfvars`, `*.tfvars`, `kubeconfig`, and `.infisical.json` are all in `.gitignore`.
 - `secrets.tfvars.example` is safe to commit — it has dummy/empty values for all secrets.
 - Consider GitLeaks + pre-commit hooks to prevent accidental secret commits.

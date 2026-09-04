@@ -1,6 +1,9 @@
 # Diagram Postgres: Secret-vs-Role Credential Mismatch (2026-09-03)
 
-## Problem
+> Root-cause note for the diagram `/api` `500` / empty-UI episode. Auth failure,
+> **no data loss and no app regression** — all rows stayed present throughout.
+
+## Summary
 
 The prod diagram site appeared to lose all data: every `/api` call returned
 `500`, the UI list/editor looked empty. Root cause was **no data loss and no
@@ -30,7 +33,7 @@ Diagnosis was masked because on-box `psql -h localhost` succeeded via `trust`,
 misleadingly confirming "the password is fine", while the real TCP path failed
 with `password authentication failed for user "diagram"`.
 
-## Why data loss was ruled out
+## Why Data Loss Was Ruled Out
 
 - `public.diagrams` + `public.pgmigrations` present; `SELECT count(*)` → `3`.
 - PG pod stable (`Running`), PVC `Bound`, data dir not re-initialized by the 11
@@ -44,6 +47,8 @@ with `password authentication failed for user "diagram"`.
 ALTER USER diagram WITH PASSWORD 'postgres123zxc';
 ```
 
+## Verification
+
 ```bash
 kubectl rollout restart deploy/diagram-backend
 # verify over the exact TCP path clients use:
@@ -52,12 +57,14 @@ kubectl run pgtest --rm -i --restart=Never --image=postgres:16-alpine -- \
 # → 1
 ```
 
-## Preventative Actions
+## Prevention
 
 1. **Rotate the exposed password.** `postgres123zxc` appeared in chat logs.
    Update BOTH Postgres and `diagram-secrets`, then restart backend.
 2. **Single source of truth.** Store the DB password only in the k8s secret;
-   derive the role password from it, never rotate independently.
+   derive the role password from it, never rotate independently. (See
+   `docs/postgres-rotation.md` — manual `ALTER USER` outside Terraform is what
+   caused this.)
 3. **Post-rotation smoke test.** After any password change, connect as the app
    user over the Service DNS and `SELECT 1`, failing loudly on auth errors.
 4. **Tighten `pg_hba.conf`.** Drop blanket `trust` for localhost; require
@@ -67,7 +74,7 @@ kubectl run pgtest --rm -i --restart=Never --image=postgres:16-alpine -- \
    `Delete` reclaim on a single host. Pin `Retain`/NAS-backed storage and add
    scheduled backups / WAL archiving if history matters long-term.
 
-### Labels
+## Labels
 
 `type:incident` · `impact:data-access` · `cause:credential-mismatch` ·
 `component:postgres` · `environment:homelab-k3s` · `resolved`
