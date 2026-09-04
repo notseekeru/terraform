@@ -335,8 +335,7 @@ The manifest path defaults to `${path.module}/../../../gitops/app.yaml` (resolve
 Database strategy varies by module: **DO Managed PG** for `doks` (see [DOKS Cluster](#doks-cluster-cloud)), **self-hosted StatefulSet** for `k3s` (see [K3s Module](#k3s-module-local)).
 The connection string and API key are injected into the `diagram-secrets` Kubernetes secret consumed by application pods.
 Related docs:
-- `docs/postgres-rotation.md` — the DB role-password rotation runbook (rotate via Terraform/Infisical **only**, never a manual `ALTER USER`).
-- `docs/incident-2026-09-03-postgres-credential-mismatch.md` — root cause: a manual `ALTER USER` split the role password from `diagram-secrets` and broke backend auth over TCP (no data loss).
+- `docs/incident-2026-09-03-postgres-credential-mismatch.md` — root cause + merged rotation runbook: a manual `ALTER USER` split the role password from `diagram-secrets` and broke backend auth over TCP (no data loss); includes the safe rotate-via-Terraform procedure.
 ---
 
 ## Kubernetes Secrets
