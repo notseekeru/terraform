@@ -46,42 +46,37 @@ The backend binding is cached in `infra/<MOD>/.terraform/terraform.tfstate` afte
 **State locking**
 Locking is **opt-in** and is enabled per module via `use_lockfile = true` in `versions.tf`. R2 is S3-compatible but has **no DynamoDB**, so the deprecated `dynamodb_table` lock path cannot be used against it; the S3-native lockfile (`<key>.tflock`, conditional `PutObject`) is the only viable mechanism.
 
-This is a **best-effort backstop, not a concurrency guarantee**: it depends on R2 honoring conditional-write + strong-consistency semantics, which must be validated once per bucket (see the validation steps below) before you trust that two parallel applies cannot clobber each other. State locking also only covers Terraform state — it does nothing to serialize out-of-band changes (`make nuke-list`, manual console edits, `aws-nuke`).
+A live **negative lock test was run and passed** (2026-09-06) against the shared `terraform-state` R2 bucket via the `aws` module: a second concurrent `terraform plan -lock-timeout=5s` failed with `Error acquiring the state lock` / HTTP `412 PreconditionFailed`, confirming R2 **does** enforce S3-native conditional-write on the `.tflock`. All modules (`droplet`/`doks`/`k3s`/`aws`) share this one R2 bucket with per-module keys, so a single bucket-level validation covers all four.
 
-**Recommended operating rules** (single-owner repo, but applies if you ever parallelize):
-1. One `apply`/`destroy` per module at a time.
-2. Add `-lock-timeout=30s` (or `TF_CLI_ARGS_apply`) so a genuinely-locked run fails fast with a clear message rather than erroring opaquely.
-3. After enabling `use_lockfile`, run the negative lock test below once per module.
+Locking does **not** stop destructive out-of-band changes (`make nuke-list`, manual console edits, `aws-nuke`) — it only guards concurrent Terraform runs against the same module's state.
+
+**Known gotchas (observed):**
+1. **`plan` also locks** — a *read-only* `terraform plan` acquires the state lock too (the lock is state-wide per module, held through refresh+plan). Two simultaneous `plan`s will serialize; the second waits up to `-lock-timeout` then errors. This is correct write-exclusivity, but don't run parallel `plan`s expecting all to proceed.
+2. **Every module has its own lock** — because state is per-module-key, concurrent applies on *different* modules are NOT mutually blocked. `aws` and `k3s` can apply at the same time (they touch disjoint infra). Locking only serializes two runs of the *same* module.
+3. **Verification is R2-scoped** — R2 enforces the lock (confirmed), but another object store (MinIO/local S3) may not; re-test if the backend ever moves.
+4. **A stale lock blocks everything until its `-lock-timeout`** — if a run crashes while holding the lock, subsequent runs fail with `Error acquiring the state lock` until the lease expires or `-lock=false`/`terraform force-unlock <ID>` is used. The lock ID is printed in the error.
+5. **No automatic CI serialization** — this repo has no pipeline; dispatch is manual `make apply`. Locking is the only guard. Keep to the operating rules below.
+
+**Re-verify locking only if the backend moves off R2** (e.g. to MinIO/local S3): R2's `412 PreconditionFailed` enforcement is store-specific. One negative test on this R2 bucket (done 2026-09-06 on the `aws` module — a concurrent `plan -lock-timeout=5s` correctly failed with `Error acquiring the state lock`) covers all four modules, since they share the same `terraform-state` R2 bucket. If the state store changes, run that test again on the new store.
+
+**Clearing a stale lock:**
+```bash
+# lock ID is the run still holding it — force-unlock ONLY if certain no apply is live
+# infisical run --path /terraform --env dev -- \
+#   terraform -chdir=infra/aws force-unlock <LOCK_ID>
+# (or -lock=false for a single emergency bypass, not recommended)
+```
+
+**Operating rules:**
+- One `apply`/`destroy` per module at a time (different modules are fine to run concurrently).
+- Run with `-lock-timeout=30s` (or `TF_CLI_ARGS_apply`) so a contended/stale lock fails fast with a clear message instead of hanging or erroring opaquely.
 
 **Caveats**
 
-- State locking is **opt-in** via `use_lockfile = true` in each module's `versions.tf` (DynamoDB locking is impossible on R2). Caveat: it relies on R2 honoring S3 conditional-write/strong-consistency semantics; it is a best-effort backstop, **not** a substitute for serializing applies — see the locking note in State Management above. Concurrent `apply` runs against the same module remain a last-writer-wins risk.
+- State locking is **opt-in**, enabled via `use_lockfile = true` in each module's `versions.tf`. DynamoDB locking is impossible on R2 (no DynamoDB service), so the S3-native lockfile is the only mechanism; it has been **verified working on R2** (see State locking above).
 - Splitting R2 creds (`TF_VAR_R2_*` + `AWS_ENDPOINT_URL_S3`) from real AWS creds (`AWS_*`) avoids the `InvalidAccessKeyId` collision documented in `docs/incident-2026-08-27-r2-backend-credential-conflict.md`.
 - `infra/<MOD>/terraform.tfstate*` local files are gitignored; after migration the primary state is in R2 only.
 
-
-**Validate locking once per bucket (after enabling `use_lockfile`)** — R2 is not AWS, so prove the `.tflock` conditional write actually works before trusting it. The clean way is a deliberate **negative lock test**:
-
-```bash
-# Per module, from repo root:
-make init MOD=k3s   # binds R2 backend in infra/k3s/.terraform
-
-# Terminal A: start an apply that acquires and holds the .tflock while it runs
-infisical run --path /terraform --env dev -- \
-    sh -c 'terraform -chdir=infra/k3s plan -lock-timeout=300s'
-#   ^ runs a long plan (holds lock) — or use apply on a scratch/no-op change
-
-# Terminal B: while A holds the lock, this must refuse to plan in parallel:
-infisical run --path /terraform --env dev -- \
-    terraform -chdir=infra/k3s plan -lock-timeout=10s
-#   EXPECTED if locking works: "Error acquiring the state lock" after ~10s
-#   UNEXPECTED if R2 ignores it: B plans despite A -> locking is NOT enforced
-
-# R2-specific: bucket versioning should be ON (best practice alongside the lockfile).
-# Check via the R2 dashboard/API — do not rely on AWS-style versioning commands here.
-```
-
-If the negative test fails, do **not** rely on `use_lockfile` for that bucket — enforce one-apply-at-a-time at the orchestration layer instead. This repo has no CI pipeline; dispatch is manual `make apply`, so serialization is on the operator either way.
 ---
 
 ## Quickstart
