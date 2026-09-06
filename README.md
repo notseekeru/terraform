@@ -71,6 +71,14 @@ Locking does **not** stop destructive out-of-band changes (`make nuke-list`, man
 - One `apply`/`destroy` per module at a time (different modules are fine to run concurrently).
 - Run with `-lock-timeout=30s` (or `TF_CLI_ARGS_apply`) so a contended/stale lock fails fast with a clear message instead of hanging or erroring opaquely.
 
+**Deployment orchestration — no CI/CD is deliberate**
+The concurrency *risk* is handled by state locking (above). A CI/CD pipeline would not reduce that risk further — it would gate/queue `apply`, which only matters once more than one person can run it. This is a **single-owner sandbox** and applies are already human-gated (`make apply` prompts; README requires a human-reviewed `plan`). Adding a plan→approve→apply pipeline now would be overhead (a GitOps repo or runner, a new credential surface in the CI tool, per-deploy latency) for zero additional safety.
+
+**Do not add orchestration unless** one of these becomes true:
+- more than one person can run `apply` against this state, or a machine/automation needs deploy access (need a single authorized apply path + audit trail);
+- an approval gate or non-interactive, reviewable deploys are required.
+
+If that point is reached, the cheapest fix is not full TACOS/Atlantis — it is **one centralized apply path**: a shared runner or a single sanctioned `apply` entrypoint that is the only thing authorized to run `apply`. Choose heavier tooling (Atlantis, Spacelift, Terraform Cloud) only when you also need PR-driven plan/apply, policy, and per-user audit.
 **Caveats**
 
 - State locking is **opt-in**, enabled via `use_lockfile = true` in each module's `versions.tf`. DynamoDB locking is impossible on R2 (no DynamoDB service), so the S3-native lockfile is the only mechanism; it has been **verified working on R2** (see State locking above).
