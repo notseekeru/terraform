@@ -43,12 +43,45 @@ make migrate MOD=k3s    # e.g. — pushes local state to R2 (type "yes" to copy)
 
 The backend binding is cached in `infra/<MOD>/.terraform/terraform.tfstate` after `init`, so subsequent `plan`/`apply`/`destroy` pick it up automatically.
 
+**State locking**
+Locking is **opt-in** and is enabled per module via `use_lockfile = true` in `versions.tf`. R2 is S3-compatible but has **no DynamoDB**, so the deprecated `dynamodb_table` lock path cannot be used against it; the S3-native lockfile (`<key>.tflock`, conditional `PutObject`) is the only viable mechanism.
+
+This is a **best-effort backstop, not a concurrency guarantee**: it depends on R2 honoring conditional-write + strong-consistency semantics, which must be validated once per bucket (see the validation steps below) before you trust that two parallel applies cannot clobber each other. State locking also only covers Terraform state — it does nothing to serialize out-of-band changes (`make nuke-list`, manual console edits, `aws-nuke`).
+
+**Recommended operating rules** (single-owner repo, but applies if you ever parallelize):
+1. One `apply`/`destroy` per module at a time.
+2. Add `-lock-timeout=30s` (or `TF_CLI_ARGS_apply`) so a genuinely-locked run fails fast with a clear message rather than erroring opaquely.
+3. After enabling `use_lockfile`, run the negative lock test below once per module.
+
 **Caveats**
 
-- Remote state gives Terraform **native locking** — concurrent runs against a module are guarded.
+- State locking is **opt-in** via `use_lockfile = true` in each module's `versions.tf` (DynamoDB locking is impossible on R2). Caveat: it relies on R2 honoring S3 conditional-write/strong-consistency semantics; it is a best-effort backstop, **not** a substitute for serializing applies — see the locking note in State Management above. Concurrent `apply` runs against the same module remain a last-writer-wins risk.
 - Splitting R2 creds (`TF_VAR_R2_*` + `AWS_ENDPOINT_URL_S3`) from real AWS creds (`AWS_*`) avoids the `InvalidAccessKeyId` collision documented in `docs/incident-2026-08-27-r2-backend-credential-conflict.md`.
 - `infra/<MOD>/terraform.tfstate*` local files are gitignored; after migration the primary state is in R2 only.
 
+
+**Validate locking once per bucket (after enabling `use_lockfile`)** — R2 is not AWS, so prove the `.tflock` conditional write actually works before trusting it. The clean way is a deliberate **negative lock test**:
+
+```bash
+# Per module, from repo root:
+make init MOD=k3s   # binds R2 backend in infra/k3s/.terraform
+
+# Terminal A: start an apply that acquires and holds the .tflock while it runs
+infisical run --path /terraform --env dev -- \
+    sh -c 'terraform -chdir=infra/k3s plan -lock-timeout=300s'
+#   ^ runs a long plan (holds lock) — or use apply on a scratch/no-op change
+
+# Terminal B: while A holds the lock, this must refuse to plan in parallel:
+infisical run --path /terraform --env dev -- \
+    terraform -chdir=infra/k3s plan -lock-timeout=10s
+#   EXPECTED if locking works: "Error acquiring the state lock" after ~10s
+#   UNEXPECTED if R2 ignores it: B plans despite A -> locking is NOT enforced
+
+# R2-specific: bucket versioning should be ON (best practice alongside the lockfile).
+# Check via the R2 dashboard/API — do not rely on AWS-style versioning commands here.
+```
+
+If the negative test fails, do **not** rely on `use_lockfile` for that bucket — enforce one-apply-at-a-time at the orchestration layer instead. This repo has no CI pipeline; dispatch is manual `make apply`, so serialization is on the operator either way.
 ---
 
 ## Quickstart
