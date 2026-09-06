@@ -1,39 +1,73 @@
-# Module-scoped README: adopting Cloudflare DNS as declarative infra.
+# Cloudflare module — declarative DNS (`infra/cloudflare`)
 
-## Why
-`portfolio.seekeru.tech` and `diagram.seekeru.tech` (plus any AWS ALB host) are
-currently registered in the Cloudflare dashboard. This module makes those DNS
-records + zone config code: add a map entry, `make plan`, `make apply`. No
-dashboard round-trips for DNS.
+Provider: `cloudflare/cloudflare` (≥5). State lives in R2 under
+`terraform/cloudflare/terraform.tfstate` (see root `README.md`).
 
-## Credentials (ZERO-TOUCH — never through an agent)
-An API token scoped `Zone:DNS:Edit` on `seekeru.tech` is required. Store it in
-Infisical as `CLOUDFLARE_ACCESS_TOKEN` (or whatever the Makefile target expects)
-and export `TF_VAR_CLOUDFLARE_API_TOKEN` in the infisical env. Do not copy it
-into the repo.
+## Status (adopted)
 
-## One-time adoption — import existing records BEFORE first apply
-Live hostnames must be imported into state so an apply does not delete/duplicate
-them.
+The `seekeru.tech` zone (id `5a1a5f826d5a3398dc78ba360e24dfa0`) is managed.
+The following tunnel hostnames are **imported into state and now tracked by
+Terraform** (config mirrors them in `variables.tf` → `records`):
 
-1. Get the zone id (dashboard → zone → Overview, or `zone_id` below).
-2. List live DNS record ids: `curl https://api.cloudflare.com/client/v4/zones/<ZONE>/dns_records?name=seekeru.tech`
-   (or read them from the dashboard).
-3. For each record to manage, fetch its `<RECORD_ID>` and import (v5 resource
-   name is `cloudflare_dns_record`):
-   ```
-   make init MOD=cloudflare
-   terraform -chdir=infra/cloudflare import \
+| Map key | FQDN                | Target (tunnel)                 | Proxied |
+| ------- | ------------------- | ------------------------------- | ------- |
+| `apex`  | `seekeru.tech`      | `7bbbb5d4-…cfargotunnel.com`    | yes     |
+| `portfolio` | `portfolio.seekeru.tech` | `7bbbb5d4-…cfargotunnel.com`| yes     |
+| `diagram`   | `diagram.seekeru.tech`   | `7bbbb5d4-…cfargotunnel.com`| yes     |
+| `max`       | `max.seekeru.tech`       | `7bbbb5d4-…cfargotunnel.com`| yes     |
+
+`terraform plan MOD=cloudflare` should report **No changes** against live DNS.
+
+**Out of scope (also in the dashboard, owned elsewhere — do not manage here):**
+Clerk SaaS records (`accounts`, `clerk`, `clk._domainkey`, `clkmail`, …), the
+AWS ALB `alb.seekeru.tech` and its ACM validation CNAME (managed by
+`infra/aws`).
+
+## Credentials
+
+The provider is authenticated with `TF_VAR_CLOUDFLARE_API_TOKEN` — a
+`cfat_…` API token with `Zone → DNS → Edit`. (`TF_VAR_CLOUDFLARE_ACCOUNT_ID` is
+also stored in Infisical, but the DNS-only code path here does not consume it; it
+is kept for parity/future tunnel work.) Inject via Infisical `/terraform` — never
+commit token values.
+
+## Workflow
+
+Add, change, or remove hostnames by editing the `records` map in
+`variables.tf`, then:
+
+```bash
+make init MOD=cloudflare     # first time / backend + provider
+make plan MOD=cloudflare     # propose the DNS diff
+make apply MOD=cloudflare    # apply it
+```
+
+- **Add** → new map entry (key, `type="CNAME"`, `name` relative to zone or `"@"`
+  for apex, `content` = tunnel/CNAME target, `proxied=true` optionally `ttl`).
+- **Change** → edit the value/name.
+- **Remove** → delete the entry. Terraform deletes the record on `apply`.
+
+## Adopting a future dashboard-created record
+
+If you (or another tool) create a record in the dashboard that you now want
+Terraform to own, it must be imported before config lands, or the apply will
+try to duplicate it:
+
+1. Identify the record id:
+   `curl -s -H "Authorization: Bearer $TF_VAR_CLOUDFLARE_API_TOKEN" \
+     "https://api.cloudflare.com/client/v4/zones/<ZONE_ID>/dns_records"` (or the
+   dashboard).
+2. Add the matching entry to `records` in `variables.tf`.
+3. Import it into state:
+   ```bash
+   infisical run --path /terraform --env dev -- terraform -chdir=infra/cloudflare import \
      'cloudflare_dns_record.this["<key>"]' '<ZONE_ID>/<RECORD_ID>'
    ```
-4. Populate that record's map entry below so config matches state.
-   `make plan` should then show no diff.
+4. `make plan MOD=cloudflare` → should show no diff.
 
-## Adding a record later
-```
-records = {
-  "portfolio" = { zone_key="seekeru", type="CNAME", name="portfolio",
-                  content="<tunnel>.cfargotunnel.com", proxied=true }
-}
-```
-then `make plan MOD=cloudflare && make apply MOD=cloudflare`.
+## Zone settings / rules
+
+`var.zone_settings` is wired to `cloudflare_zone_setting` (per-setting) but is
+**empty by default** — nothing is asserted until you add entries, so live zone
+settings are untouched. Only add a setting after confirming the current value
+in the dashboard, or apply will revert it.

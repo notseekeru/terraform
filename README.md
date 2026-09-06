@@ -1,7 +1,7 @@
 # Terraform — Personal Cloud Infrastructure
 
 > Infrastructure-as-Code for my personal cloud environment.  
-> **Providers:** DigitalOcean / Cloudflare R2 / AWS · **Provisioner:** Terraform · **Orchestrator:** ArgoCD
+> **Providers:** DigitalOcean / Cloudflare (R2 + DNS) / AWS · **Provisioner:** Terraform · **Orchestrator:** ArgoCD
 > **AI usage is encouraged.** This repo is designed to be AI-friendly: ask an agent to explain, plan, audit, or change infrastructure. Architecture always ends with **a human owner in the loop** — no change is applied without human review of a `plan`. AI is an helper not a dependancy.
 
 ---
@@ -12,6 +12,7 @@
 | ---------------------- | ---------------------------------------------------------------------------------------- |
 | **Terraform**          | `>= 1.0` ([install guide](https://developer.hashicorp.com/terraform/install))            |
 | **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — needed only for `doks`      |
+| **Cloudflare token**  | API token with `Zone → DNS → Edit` (`TF_VAR_CLOUDFLARE_API_TOKEN`) — needed by `cloudflare` module |
 | **SSH Keys**           | Public keys uploaded to your DO account or provided inline via `secrets.tfvars`          |
 | **k3s**                | An existing k3s cluster with `~/.kube/config` — see [K3s Module](#k3s-module-local)      |
 | **Make**               | (Optional) `make` for the workflow targets below                                         |
@@ -87,7 +88,7 @@ cd terraform
 # 2. Secrets come from Infisical (see .envrc / SECRETS_PATH=... in the Makefile).
 #    There is no secrets.tfvars-driven flow — all tfvars-style inputs flow via infisical run.
 
-# 3. Initialize a module (doks, k3s, or aws) — pulls providers + binds R2 backend
+# 3. Initialize a module (doks, k3s, aws, or cloudflare) — pulls providers + binds R2 backend
 #    If you need k3s then you need to install k3s software
 make init MOD=k3s
 
@@ -162,7 +163,7 @@ Module targets accept `MOD=doks`, `MOD=k3s`, `MOD=aws`, or `MOD=cloudflare`. The
 
 | Variable       | Default      | Description                                             |
 | -------------- | ------------ | ------------------------------------------------------- |
-| `MOD`          | (empty)      | Module subdirectory: `doks`, `k3s`, or `aws` |
+| `MOD`          | (empty)      | Module subdirectory: `doks`, `k3s`, `aws`, or `cloudflare` |
 | `ENV`          | `dev`        | Infisical environment                                   |
 | `SECRETS_PATH` | `/terraform` | Infisical secrets path                                  |
 
@@ -173,6 +174,8 @@ make init MOD=k3s       # first time for a module
 make plan MOD=k3s       # preview
 make apply MOD=k3s      # apply
 make plan MOD=doks      # another module
+make plan MOD=cloudflare # preview cloudflare DNS changes
+make apply MOD=cloudflare # apply cloudflare DNS changes
 make migrate MOD=k3s    # one-time local→R2 state copy
 ```
 
@@ -257,9 +260,11 @@ CloudFront via Origin Access Control (OAC). Alerting: a CloudWatch CPU alarm plu
 credit-cap budgets all publish to the SNS topic (`TF_VAR_ALERT_EMAIL` must confirm the subscription
 once).
 
-HTTPS is optional: set `alb_domain` (e.g. `app.example.tech`) to get an ACM certificate, a :443
+HTTPS is optional: set `alb_domain` (here `alb.seekeru.tech`) to get an ACM certificate, a :443
 listener, and an HTTP→HTTPS redirect. Add the returned `alb_domain_validation_cname` in Cloudflare
-to issue the cert. See `AWS.md` for the full architecture.
+to issue the cert. Note: the `alb.seekeru.tech` DNS record (ELB CNAME) and its ACM validation record
+live in the Cloudflare dashboard and are **deliberately outside** the `infra/cloudflare` module scope
+(they're owned by the AWS provisioning flow, not the tunnel). See `AWS.md` for the full architecture.
 
 ### Deployment notes (verified)
 
@@ -270,6 +275,42 @@ to issue the cert. See `AWS.md` for the full architecture.
 - **Upgrade + revalidation matrix:** see `AWS.md` §8 for ranked upgrade paths and the drift-check commands.
 
 ---
+
+## Cloudflare Module (DNS)
+
+The `infra/cloudflare/` module (state #4) makes the tunnel-facing DNS records declarative so you do not need the Cloudflare dashboard for them. Provider: `cloudflare/cloudflare ~> 5.0`; state lives in R2 like every other module.
+
+### Scope
+
+Manages the **4 tunnel hostnames** on `seekeru.tech` (zone id `5a1a5f826d5a3398dc78ba360e24dfa0`):
+
+| Record | Type | Target | Proxied |
+| ------ | ---- | ------ | ------- |
+| `seekeru.tech` (apex) | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes |
+| `portfolio.seekeru.tech` | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes |
+| `diagram.seekeru.tech` | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes |
+| `max.seekeru.tech` | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes |
+
+These were imported into state first (adopt, don't overwrite) and are now tracked by Terraform.
+
+**Left in the dashboard** (out of TF scope, owned by other systems):
+- Clerk SaaS records (`accounts`, `clerk`, `clk._domainkey`, `clkmail` …)
+- AWS ALB `alb.seekeru.tech` + its ACM validation CNAME (owned by `infra/aws`)
+- Any future statically-addressed record
+
+### Credentials
+
+Needs `TF_VAR_CLOUDFLARE_API_TOKEN` (a `cfat_…` API token with `Zone → DNS → Edit`; account-wide is acceptable here). `TF_VAR_CLOUDFLARE_ACCOUNT_ID` is also stored in Infisical but is not consumed by the DNS-only provider path. Both are injected via Infisical — never committed.
+
+### Workflow
+
+```bash
+make init MOD=cloudflare
+make plan MOD=cloudflare   # propose DNS changes
+make apply MOD=cloudflare  # apply the diff
+```
+
+To add a hostname, drop a map entry under `records` in `infra/cloudflare/variables.tf`, then `plan`/`apply`. To remove one you no longer run (e.g. a dead tunnel host), delete the map entry — Terraform will delete the record. See `infra/cloudflare/README.md` for the full adoption runbook and how to `terraform import` future records that were created dashboard-side.
 
 ## ArgoCD
 
@@ -341,6 +382,7 @@ direnv allow
 - **Secrets are managed in Infisical**, injected via `infisical run` — they never sit in a committed `.tfvars` file. The `secrets.tfvars.example` template is dummy/empty and safe to commit.
 - The DO token is consumed via `var.DO_TOKEN` (marked `sensitive = true`).
 - GitHub PAT and credentials are written directly to Kubernetes secrets — they never leave the Terraform state.
+- The Cloudflare module uses `TF_VAR_CLOUDFLARE_API_TOKEN` (provider) with `Zone → DNS → Edit`. The current key is an account**-wide** `terraform-admin` token (broad). It works, but it is not least-privilege; if you want a tighter posture later, mint a token scoped to just the `seekeru.tech` zone (`Zone:DNS:Edit`) and update the Infisical value.
 - R2 state-backend creds are namespaced `TF_VAR_R2_*` (+ `AWS_ENDPOINT_URL_S3`) and kept distinct from the real AWS provider creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) to avoid the collision in `docs/incident-2026-08-27-r2-backend-credential-conflict.md`.
 - `secrets.tfvars`, `*.tfvars`, `kubeconfig`, and `.infisical.json` are all in `.gitignore`.
 - `secrets.tfvars.example` is safe to commit — it has dummy/empty values for all secrets.
