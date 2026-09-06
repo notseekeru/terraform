@@ -11,7 +11,7 @@
 | Requirement            | Details                                                                                  |
 | ---------------------- | ---------------------------------------------------------------------------------------- |
 | **Terraform**          | `>= 1.0` ([install guide](https://developer.hashicorp.com/terraform/install))            |
-| **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — needed only for `doks` / `droplet`      |
+| **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — needed only for `doks`      |
 | **SSH Keys**           | Public keys uploaded to your DO account or provided inline via `secrets.tfvars`          |
 | **k3s**                | An existing k3s cluster with `~/.kube/config` — see [K3s Module](#k3s-module-local)      |
 | **Make**               | (Optional) `make` for the workflow targets below                                         |
@@ -26,7 +26,6 @@ State lives in a **Cloudflare R2 bucket** (`s3` backend, S3-compatible) with a p
 
 | Module    | State key                             | Backend |
 | --------- | ------------------------------------- | ------- |
-| `droplet` | `terraform/droplet/terraform.tfstate` | s3      |
 | `doks`    | `terraform/doks/terraform.tfstate`    | s3      |
 | `k3s`     | `terraform/k3s/terraform.tfstate`     | s3      |
 | `aws`     | `terraform/aws/terraform.tfstate`     | s3      |
@@ -87,7 +86,7 @@ cd terraform
 # 2. Secrets come from Infisical (see .envrc / SECRETS_PATH=... in the Makefile).
 #    There is no secrets.tfvars-driven flow — all tfvars-style inputs flow via infisical run.
 
-# 3. Initialize a module (droplet, doks, k3s, or aws) — pulls providers + binds R2 backend
+# 3. Initialize a module (doks, k3s, or aws) — pulls providers + binds R2 backend
 #    If you need k3s then you need to install k3s software
 make init MOD=k3s
 
@@ -105,24 +104,17 @@ make apply MOD=k3s
 ```
 terraform/
 ├── infra/                   # Terraform root modules
-│   ├── droplet/             #   state #1 — standalone DO droplets
-│   │   ├── versions.tf      #   Terraform & DO + local providers
-│   │   ├── provider.tf      #   DO provider
-│   │   ├── variables.tf     #   DO_TOKEN, ssh_keys, servers, region defaults
-│   │   ├── main.tf          #   SSH keys, droplets, Ansible inventory
-│   │   ├── inventory.tmpl   #   Ansible inventory template (rendered post-apply)
-│   │   └── outputs.tf       #   droplet IPs and attributes
-│   ├── doks/                #   state #2 — DOKS cluster (cloud)
+│   ├── doks/                #   state #1 — DOKS cluster (cloud)
 │   │   ├── versions.tf      #   DO, helm, k8s, kubectl, local
 │   │   ├── provider.tf      #   DO + dynamic k8s/helm/kubectl providers
 │   │   ├── variables.tf     #   DO_TOKEN, CLOUDFLARE_TOKEN, GITHUB_*, DIAGRAM_API_KEY
 │   │   └── main.tf          #   cluster → managed PG → helm releases → secrets → argocd app
-│   ├── k3s/                 #   state #3 — local k3s cluster (no DO)
+│   ├── k3s/                 #   state #2 — local k3s cluster (no DO)
 │   │   ├── versions.tf      #   helm, k8s, kubectl only
 │   │   ├── provider.tf      #   providers read from ~/.kube/config
 │   │   ├── variables.tf     #   CLOUDFLARE_TOKEN, GITHUB_*, DIAGRAM_API_KEY, POSTGRES_PASSWORD
 │   │   └── main.tf          #   helm releases → self-hosted PG StatefulSet → secrets → argocd app
-│   └── aws/                 #   state #4 — AWS sandbox (S3, RDS, VPC, ASG, CloudFront)
+│   └── aws/                 #   state #3 — AWS sandbox (S3, RDS, VPC, ASG, CloudFront)
 │       ├── versions.tf      #   aws provider + s3(R2) backend
 │       ├── provider.tf      #   aws provider, region + default tags
 │       ├── variables.tf     #   instance classes, POSTGRES_PASSWORD, ALERT_EMAIL
@@ -144,7 +136,7 @@ terraform/
 
 ## Makefile Workflow
 
-Module targets accept `MOD=droplet`, `MOD=doks`, `MOD=k3s`, or `MOD=aws`. The `infra/` prefix and Infisical secret flow are baked into each target. Sensitive vars (incl. the R2 credentials backing state) come from `infisical run`. Backend-facing targets (`init`, `upgradeinit`, `migrate`) exec terraform through `/bin/sh -c` so the `TF_VAR_R2_*` refs expand from infisical's injected env; plan/apply/destroy exec directly so the AWS provider sees native `AWS_*` creds. `nuke-list` is account-scoped (ignores `MOD`) and runs from the repo root.
+Module targets accept `MOD=doks`, `MOD=k3s`, or `MOD=aws`. The `infra/` prefix and Infisical secret flow are baked into each target. Sensitive vars (incl. the R2 credentials backing state) come from `infisical run`. Backend-facing targets (`init`, `upgradeinit`, `migrate`) exec terraform through `/bin/sh -c` so the `TF_VAR_R2_*` refs expand from infisical's injected env; plan/apply/destroy exec directly so the AWS provider sees native `AWS_*` creds. `nuke-list` is account-scoped (ignores `MOD`) and runs from the repo root.
 
 | Target             | Command                                                                             | Description                              |
 | ------------------ | ----------------------------------------------------------------------------------- | ---------------------------------------- |
@@ -163,7 +155,7 @@ Module targets accept `MOD=droplet`, `MOD=doks`, `MOD=k3s`, or `MOD=aws`. The `i
 
 | Variable       | Default      | Description                                             |
 | -------------- | ------------ | ------------------------------------------------------- |
-| `MOD`          | (empty)      | Module subdirectory: `droplet`, `doks`, `k3s`, or `aws` |
+| `MOD`          | (empty)      | Module subdirectory: `doks`, `k3s`, or `aws` |
 | `ENV`          | `dev`        | Infisical environment                                   |
 | `SECRETS_PATH` | `/terraform` | Infisical secrets path                                  |
 
@@ -181,75 +173,9 @@ make migrate MOD=k3s    # one-time local→R2 state copy
 
 ## Variables
 
-All Terraform input variables live in the module `variables.tf` files — `infra/droplet/variables.tf`, `infra/doks/variables.tf`, `infra/k3s/variables.tf`, `infra/aws/variables.tf` — and carry their own `sensitive = true` flags and `optional()` object schemas (e.g. the droplet `servers` map). Read the source for the authoritative type/required/default split.
+All Terraform input variables live in the module `variables.tf` files — `infra/doks/variables.tf`, `infra/k3s/variables.tf`, `infra/aws/variables.tf` — and carry their own `sensitive = true` flags and `optional()` object schemas. Read the source for the authoritative type/required/default split.
 
 > Secrets are injected from Infisical (the `infisical run` wrapper in the Makefile) and mapped to Terraform input vars as `TF_VAR_*`. A `secrets.tfvars.example` template is kept for reference, but it is not the live secret source.
-
-## Droplets
-
-Add servers by setting the `servers` map variable (e.g. passed via `-var` for the droplet module, or populated into Infisical as `TF_VAR_servers`). Example:
-
-```hcl
-servers = {
-  "vm-main-server" = {
-    tags = ["main-server"]
-  }
-  "vm-worker-01" = {
-    region = "nyc1"
-    size   = "s-2vcpu-2gb"
-    tags   = ["worker", "web"]
-  }
-  "vm-db-01" = {
-    image  = "ubuntu-24-04-x64"
-    size   = "s-2vcpu-4gb"
-    tags   = ["database"]
-  }
-}
-```
-
-Each server key becomes the Droplet name. All fields are optional — missing values fall back to the defaults above. The `tags` field is augmented with the `"vm"` tag automatically.
-
-Every Droplet is provisioned with the single `SSH_PUBLIC_KEY`. Droplets use `create_before_destroy` lifecycle for safe updates.
-
-### Outputs
-
-| Name          | Description                                                            |
-| ------------- | ---------------------------------------------------------------------- |
-| `droplets`    | Full map of all Droplets with IP, URN, region, size, image, tags, IPv6 |
-| `droplet_ips` | Quick lookup: server name → public IPv4                                |
-
-Retrieve after deploy:
-
-```bash
-terraform -chdir=infra/droplet output droplet_ips
-```
-
----
-
-## Ansible Integration
-
-Post-apply, Terraform renders `infra/droplet/inventory.tmpl` → `~/ansible/inventories/droplets.ini`.
-
-```ini
-[all:vars]
-ansible_user=root
-
-[all]
-vm-main-server ansible_host=203.0.113.1 region=sgp1 size=s-1vcpu-1gb image=debian-13-x64
-
-[tag_main-server]
-vm-main-server ansible_host=203.0.113.1
-```
-
-Servers are automatically grouped by tag (e.g. `[tag_web]`, `[tag_database]`), so you can target specific groups:
-
-```bash
-# All servers (from ~/ansible)
-ansible-playbook -i inventories/droplets.ini playbooks/site.yml
-
-# Only web workers
-ansible-playbook -i inventories/droplets.ini --limit tag_web playbooks/site.yml
-```
 
 ---
 
@@ -309,7 +235,7 @@ make dump   # → ~/backups/diagramdb-<timestamp>.sql.gz
 
 ## AWS Module (Cloud)
 
-An AWS sandbox architecture (`infra/aws/`, state #4): VPC, public subnets, auto-scaling EC2 web
+An AWS sandbox architecture (`infra/aws/`, state #3): VPC, public subnets, auto-scaling EC2 web
 tier behind an Application Load Balancer, private single-AZ RDS PostgreSQL, and an S3 bucket
 served via CloudFront. Provisioning targets a real AWS account; state still lives in R2.
 
@@ -408,7 +334,6 @@ direnv allow
 
 - **Secrets are managed in Infisical**, injected via `infisical run` — they never sit in a committed `.tfvars` file. The `secrets.tfvars.example` template is dummy/empty and safe to commit.
 - The DO token is consumed via `var.DO_TOKEN` (marked `sensitive = true`).
-- SSH keys are registered with Droplets at provision time — no post-provision injection.
 - GitHub PAT and credentials are written directly to Kubernetes secrets — they never leave the Terraform state.
 - R2 state-backend creds are namespaced `TF_VAR_R2_*` (+ `AWS_ENDPOINT_URL_S3`) and kept distinct from the real AWS provider creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) to avoid the collision in `docs/incident-2026-08-27-r2-backend-credential-conflict.md`.
 - `secrets.tfvars`, `*.tfvars`, `kubeconfig`, and `.infisical.json` are all in `.gitignore`.
@@ -420,7 +345,6 @@ direnv allow
 ## Cleanup
 
 ```bash
-make destroy MOD=droplet
 make destroy MOD=doks
 make destroy MOD=k3s
 make destroy MOD=aws

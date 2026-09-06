@@ -189,7 +189,7 @@ As-built state is **verified and drift-free** — `terraform plan` reports `No c
 ### Deferred / not recommended for a sandbox
 | Upgrade | Why not |
 |---------|---------|
-| NAT + private subnets | ~$33/mo; the droplet tunnel already fronts the root domain; conflicts with free-tier cost goal. |
+| NAT + private subnets | ~$33/mo; conflicts with the free-tier cost goal. |
 | Larger instances / more storage | Burns the ~\$200 credit balance for negligible demo value. |
 
 ### Revalidation commands
