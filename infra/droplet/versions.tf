@@ -5,6 +5,8 @@ terraform {
     skip_region_validation      = true
     skip_credentials_validation = true
     skip_requesting_account_id  = true
+    # S3-native lockfile locking (guards concurrent applies per module).
+    use_lockfile = true
   }
 
   required_providers {
