@@ -22,9 +22,7 @@
 
 ## State Management
 
-State is stored in a **Cloudflare R2 bucket** (`s3` backend, S3-compatible) — no local `terraform.tfstate` needed. Terraform reads/writes it remotely with a per-module key.
-
-**Storage layout** in the `terraform-state` R2 bucket:
+State lives in a **Cloudflare R2 bucket** (`s3` backend, S3-compatible) with a per-module key — no local `terraform.tfstate`.
 
 | Module    | State key                             | Backend |
 | --------- | ------------------------------------- | ------- |
@@ -33,57 +31,50 @@ State is stored in a **Cloudflare R2 bucket** (`s3` backend, S3-compatible) — 
 | `k3s`     | `terraform/k3s/terraform.tfstate`     | s3      |
 | `aws`     | `terraform/aws/terraform.tfstate`     | s3      |
 
-**Backend config** lives per module in `versions.tf`. The R2 bucket, key, and access/secret keys are passed from Infisical env vars at `init` time via `-backend-config` (`TF_VAR_R2_BUCKET`, `TF_VAR_R2_ACCOUNT_ID`, `TF_VAR_R2_ACCESS_KEY_ID`, `TF_VAR_R2_SECRET_ACCESS_KEY`); the R2 endpoint URL is injected as `AWS_ENDPOINT_URL_S3` (env-var source for the s3 backend's `endpoints.s3`). The AWS-specific module (`infra/aws`) additionally uses real AWS credentials via the native `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` env vars for its provider — kept separate from the R2 creds. See `docs/incident-2026-08-27-r2-backend-credential-conflict.md` for the collision that motivated this split.
-
-**First-time setup** (per module, or after changing backend config):
+**First-time / after backend change** — push local state up (per module):
 
 ```bash
-make migrate MOD=k3s    # e.g. — pushes local state to R2 (type "yes" to copy)
+make migrate MOD=k3s    # type "yes" to copy local state into R2
 ```
 
-The backend binding is cached in `infra/<MOD>/.terraform/terraform.tfstate` after `init`, so subsequent `plan`/`apply`/`destroy` pick it up automatically.
+Backend config lives in each module's `versions.tf`. At `init`, R2 creds pass via `-backend-config` from Infisical env vars (`TF_VAR_R2_BUCKET`, `TF_VAR_R2_ACCOUNT_ID`, `TF_VAR_R2_ACCESS_KEY_ID`, `TF_VAR_R2_SECRET_ACCESS_KEY`); the endpoint comes from `AWS_ENDPOINT_URL_S3`. The `aws` module keeps its **real** AWS provider creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) separate from the R2 creds to avoid the collision in `docs/incident-2026-08-27-r2-backend-credential-conflict.md`. After `init`, the binding is cached in `infra/<MOD>/.terraform/`, so later `plan`/`apply`/`destroy` pick it up automatically.
 
-**State locking**
-Locking is **opt-in** and is enabled per module via `use_lockfile = true` in `versions.tf`. R2 is S3-compatible but has **no DynamoDB**, so the deprecated `dynamodb_table` lock path cannot be used against it; the S3-native lockfile (`<key>.tflock`, conditional `PutObject`) is the only viable mechanism.
+## Locking
 
-A live **negative lock test was run and passed** (2026-09-06) against the shared `terraform-state` R2 bucket via the `aws` module: a second concurrent `terraform plan -lock-timeout=5s` failed with `Error acquiring the state lock` / HTTP `412 PreconditionFailed`, confirming R2 **does** enforce S3-native conditional-write on the `.tflock`. All modules (`droplet`/`doks`/`k3s`/`aws`) share this one R2 bucket with per-module keys, so a single bucket-level validation covers all four.
+Opt-in per module via `use_lockfile = true` in `versions.tf`. R2 has no DynamoDB service, so only the S3-native lockfile (`<key>.tflock`, conditional `PutObject`) is viable — the `dynamodb_table` path can't be used. Verified working on this R2 bucket (2026-09-06, `aws` module): a concurrent `plan -lock-timeout=5s` failed with `Error acquiring the state lock` / HTTP `412 PreconditionFailed`. All four modules share the one `terraform-state` bucket, so one test covers them. Locking guards only concurrent Terraform runs on the **same** module's state — it does **not** stop out-of-band destructive changes (`make nuke-list`, console edits, `aws-nuke`).
 
-Locking does **not** stop destructive out-of-band changes (`make nuke-list`, manual console edits, `aws-nuke`) — it only guards concurrent Terraform runs against the same module's state.
+**Gotchas**
 
-**Known gotchas (observed):**
-1. **`plan` also locks** — a *read-only* `terraform plan` acquires the state lock too (the lock is state-wide per module, held through refresh+plan). Two simultaneous `plan`s will serialize; the second waits up to `-lock-timeout` then errors. This is correct write-exclusivity, but don't run parallel `plan`s expecting all to proceed.
-2. **Every module has its own lock** — because state is per-module-key, concurrent applies on *different* modules are NOT mutually blocked. `aws` and `k3s` can apply at the same time (they touch disjoint infra). Locking only serializes two runs of the *same* module.
-3. **Verification is R2-scoped** — R2 enforces the lock (confirmed), but another object store (MinIO/local S3) may not; re-test if the backend ever moves.
-4. **A stale lock blocks everything until its `-lock-timeout`** — if a run crashes while holding the lock, subsequent runs fail with `Error acquiring the state lock` until the lease expires or `-lock=false`/`terraform force-unlock <ID>` is used. The lock ID is printed in the error.
-5. **No automatic CI serialization** — this repo has no pipeline; dispatch is manual `make apply`. Locking is the only guard. Keep to the operating rules below.
-
-**Re-verify locking only if the backend moves off R2** (e.g. to MinIO/local S3): R2's `412 PreconditionFailed` enforcement is store-specific. One negative test on this R2 bucket (done 2026-09-06 on the `aws` module — a concurrent `plan -lock-timeout=5s` correctly failed with `Error acquiring the state lock`) covers all four modules, since they share the same `terraform-state` R2 bucket. If the state store changes, run that test again on the new store.
+1. **`plan` locks too** — a read-only `plan` holds the state lock through refresh+plan. Two parallel `plan`s serialize; the second waits up to `-lock-timeout`, then errors.
+2. **Per-module locks** — state keys differ, so applies on _different_ modules are not mutually blocked (`aws` && `k3s` can run together); only two runs of the _same_ module serialize.
+3. **R2-scoped verification** — the 412 enforcement is store-specific; re-test if the backend ever moves to MinIO/local S3.
+4. **Stale lock blocks all runs** — after a crash, later runs fail until the lease expires or you `terraform force-unlock <LOCK_ID>` (ID is in the error). `-lock=false` is an emergency bypass only.
+5. **No CI serialization** — dispatch is manual `make apply`; locking is the only guard. Follow the operating rules below.
 
 **Clearing a stale lock:**
+
 ```bash
-# lock ID is the run still holding it — force-unlock ONLY if certain no apply is live
+# OFFICIAL ONLY if you are certain no apply is live: the lock ID comes from the error
 # infisical run --path /terraform --env dev -- \
 #   terraform -chdir=infra/aws force-unlock <LOCK_ID>
-# (or -lock=false for a single emergency bypass, not recommended)
 ```
 
-**Operating rules:**
-- One `apply`/`destroy` per module at a time (different modules are fine to run concurrently).
-- Run with `-lock-timeout=30s` (or `TF_CLI_ARGS_apply`) so a contended/stale lock fails fast with a clear message instead of hanging or erroring opaquely.
+**Operating rules**
 
-**Deployment orchestration — no CI/CD is deliberate**
-The concurrency *risk* is handled by state locking (above). A CI/CD pipeline would not reduce that risk further — it would gate/queue `apply`, which only matters once more than one person can run it. This is a **single-owner sandbox** and applies are already human-gated (`make apply` prompts; README requires a human-reviewed `plan`). Adding a plan→approve→apply pipeline now would be overhead (a GitOps repo or runner, a new credential surface in the CI tool, per-deploy latency) for zero additional safety.
+- One `apply`/`destroy` per module at a time (different modules in parallel are fine).
+- Run with `-lock-timeout=30s` so a contended/stale lock fails fast with a clear message instead of hanging.
 
-**Do not add orchestration unless** one of these becomes true:
-- more than one person can run `apply` against this state, or a machine/automation needs deploy access (need a single authorized apply path + audit trail);
-- an approval gate or non-interactive, reviewable deploys are required.
+## No CI/CD is deliberate
 
-If that point is reached, the cheapest fix is not full TACOS/Atlantis — it is **one centralized apply path**: a shared runner or a single sanctioned `apply` entrypoint that is the only thing authorized to run `apply`. Choose heavier tooling (Atlantis, Spacelift, Terraform Cloud) only when you also need PR-driven plan/apply, policy, and per-user audit.
+Locking already handles the concurrency risk; a pipeline would gate/queue `apply`, which matters only once >1 person can run it. This is a **single-owner sandbox** and applies are human-gated (`make apply` prompts; README requires a human-reviewed `plan`). A plan→approve→apply pipeline now would add a runner, a CI credential surface, and deploy latency for zero extra safety.
+
+**Add orchestration only if:** a second person or a machine needs `apply` access (need one authorized path + audit trail), or you require non-interactive, reviewed deploys. The cheap fix then is a **single centralized apply path** (one shared runner/entrypoint authorized to `apply`); reach for Atlantis/Spacelift/Terraform Cloud only when you also want PR-driven plan/apply, policy, or per-user audit.
+
 **Caveats**
 
-- State locking is **opt-in**, enabled via `use_lockfile = true` in each module's `versions.tf`. DynamoDB locking is impossible on R2 (no DynamoDB service), so the S3-native lockfile is the only mechanism; it has been **verified working on R2** (see State locking above).
-- Splitting R2 creds (`TF_VAR_R2_*` + `AWS_ENDPOINT_URL_S3`) from real AWS creds (`AWS_*`) avoids the `InvalidAccessKeyId` collision documented in `docs/incident-2026-08-27-r2-backend-credential-conflict.md`.
-- `infra/<MOD>/terraform.tfstate*` local files are gitignored; after migration the primary state is in R2 only.
+- Locking is opt-in per module (`use_lockfile = true`); DynamoDB isn't possible on R2 (no service) — the S3 lockfile, verified on R2, is the only mechanism.
+- R2 creds (`TF_VAR_R2_*` + `AWS_ENDPOINT_URL_S3`) stay separate from real AWS creds (`AWS_*`) — see the `InvalidAccessKeyId` incident doc.
+- `infra/<MOD>/terraform.tfstate*` local files are gitignored; after migration, primary state lives in R2 only.
 
 ---
 
@@ -166,7 +157,7 @@ Module targets accept `MOD=droplet`, `MOD=doks`, `MOD=k3s`, or `MOD=aws`. The `i
 | `make validate`    | `terraform -chdir=infra/$(MOD) validate`                                            | Validate configuration                   |
 | `make migrate`     | `infisical run -- /bin/sh -c 'terraform ... init -migrate-state $(backend_config)'` | One-time: push local state to R2         |
 | `make dump`        | `kubectl exec ... pg_dump \| gzip > ~/backups/`                                     | Backup diagramdb from local k3s postgres |
-| `make nuke-list`   | `infisical run -- aws-nuke -c nuke-config.yaml (dry-run)`                     | Dry-run aws-nuke sweep (deletes nothing) |
+| `make nuke-list`   | `infisical run -- aws-nuke -c nuke-config.yaml (dry-run)`                           | Dry-run aws-nuke sweep (deletes nothing) |
 
 **Variables:**
 
@@ -192,7 +183,7 @@ make migrate MOD=k3s    # one-time local→R2 state copy
 
 All Terraform input variables live in the module `variables.tf` files — `infra/droplet/variables.tf`, `infra/doks/variables.tf`, `infra/k3s/variables.tf`, `infra/aws/variables.tf` — and carry their own `sensitive = true` flags and `optional()` object schemas (e.g. the droplet `servers` map). Read the source for the authoritative type/required/default split.
 
-## Secrets are injected from Infisical (the `infisical run` wrapper in the Makefile) and mapped to Terraform input vars as `TF_VAR_*`. A `secrets.tfvars.example` template is kept for reference, but it is not the live secret source.
+> Secrets are injected from Infisical (the `infisical run` wrapper in the Makefile) and mapped to Terraform input vars as `TF_VAR_*`. A `secrets.tfvars.example` template is kept for reference, but it is not the live secret source.
 
 ## Droplets
 
@@ -371,7 +362,9 @@ The manifest path defaults to `${path.module}/../../../gitops/app.yaml` (resolve
 Database strategy varies by module: **DO Managed PG** for `doks` (see [DOKS Cluster](#doks-cluster-cloud)), **self-hosted StatefulSet** for `k3s` (see [K3s Module](#k3s-module-local)).
 The connection string and API key are injected into the `diagram-secrets` Kubernetes secret consumed by application pods.
 Related docs:
+
 - `docs/incident-2026-09-03-postgres-credential-mismatch.md` — root cause + merged rotation runbook: a manual `ALTER USER` split the role password from `diagram-secrets` and broke backend auth over TCP (no data loss); includes the safe rotate-via-Terraform procedure.
+
 ---
 
 ## Kubernetes Secrets
