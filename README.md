@@ -29,6 +29,7 @@ State lives in a **Cloudflare R2 bucket** (`s3` backend, S3-compatible) with a p
 | `doks`    | `terraform/doks/terraform.tfstate`    | s3      |
 | `k3s`     | `terraform/k3s/terraform.tfstate`     | s3      |
 | `aws`     | `terraform/aws/terraform.tfstate`     | s3      |
+| `cloudflare` | `terraform/cloudflare/terraform.tfstate` | s3      |
 
 **First-time / after backend change** — push local state up (per module):
 
@@ -114,18 +115,24 @@ terraform/
 │   │   ├── provider.tf      #   providers read from ~/.kube/config
 │   │   ├── variables.tf     #   CLOUDFLARE_TOKEN, GITHUB_*, DIAGRAM_API_KEY, POSTGRES_PASSWORD
 │   │   └── main.tf          #   helm releases → self-hosted PG StatefulSet → secrets → argocd app
-│   └── aws/                 #   state #3 — AWS sandbox (S3, RDS, VPC, ASG, CloudFront)
-│       ├── versions.tf      #   aws provider + s3(R2) backend
-│       ├── provider.tf      #   aws provider, region + default tags
-│       ├── variables.tf     #   instance classes, POSTGRES_PASSWORD, ALERT_EMAIL
-│       ├── vpc.tf           #   VPC, subnets, route tables, IGW
-│       ├── compute.tf       #   launch template, ASG, ALB
-│       ├── storage.tf       #   S3 bucket + CloudFront (OAC)
-│       ├── database.tf      #   RDS PostgreSQL
-│       ├── security.tf      #   security groups + IAM
-│       ├── monitoring.tf    #   CloudWatch alarms + budget
-│       ├── secrets.tf       #   SSM parameters
-│       └── outputs.tf       #   ALB DNS + CloudFront domain
+│   ├── aws/                 #   state #3 — AWS sandbox (S3, RDS, VPC, ASG, CloudFront)
+│   │   ├── versions.tf      #   aws provider + s3(R2) backend
+│   │   ├── provider.tf      #   aws provider, region + default tags
+│   │   ├── variables.tf     #   instance classes, POSTGRES_PASSWORD, ALERT_EMAIL
+│   │   ├── vpc.tf           #   VPC, subnets, route tables, IGW
+│   │   ├── compute.tf       #   launch template, ASG, ALB
+│   │   ├── storage.tf       #   S3 bucket + CloudFront (OAC)
+│   │   ├── database.tf      #   RDS PostgreSQL
+│   │   ├── security.tf      #   security groups + IAM
+│   │   ├── monitoring.tf    #   CloudWatch alarms + budget
+│   │   ├── secrets.tf       #   SSM parameters
+│   │   └── outputs.tf       #   ALB DNS + CloudFront domain
+│   └── cloudflare/          #   state #4 — Cloudflare DNS + zone settings
+│       ├── versions.tf      #   cloudflare provider (~>5) + s3(R2) backend
+│       ├── provider.tf      #   cloudflare provider (api_token)
+│       ├── variables.tf     #   zones, records, zone_settings overrides
+│       ├── main.tf          #   cloudflare_dns_record per declared record
+│       └── README.md        #   import-first adoption runbook
 ├── secrets.tfvars           # Legacy gitignored file (not the live secret source)
 ├── Makefile                 # Workflow shortcuts (accepts MOD=, ENV=, SECRETS_PATH=)
 ├── flake.nix                # Nix dev shell definition
@@ -136,7 +143,7 @@ terraform/
 
 ## Makefile Workflow
 
-Module targets accept `MOD=doks`, `MOD=k3s`, or `MOD=aws`. The `infra/` prefix and Infisical secret flow are baked into each target. Sensitive vars (incl. the R2 credentials backing state) come from `infisical run`. Backend-facing targets (`init`, `upgradeinit`, `migrate`) exec terraform through `/bin/sh -c` so the `TF_VAR_R2_*` refs expand from infisical's injected env; plan/apply/destroy exec directly so the AWS provider sees native `AWS_*` creds. `nuke-list` is account-scoped (ignores `MOD`) and runs from the repo root.
+Module targets accept `MOD=doks`, `MOD=k3s`, `MOD=aws`, or `MOD=cloudflare`. The `infra/` prefix and Infisical secret flow are baked into each target. Sensitive vars (incl. the R2 credentials backing state) come from `infisical run`. Backend-facing targets (`init`, `upgradeinit`, `migrate`) exec terraform through `/bin/sh -c` so the `TF_VAR_R2_*` refs expand from infisical's injected env; plan/apply/destroy exec directly so the AWS provider sees native `AWS_*` creds. `nuke-list` is account-scoped (ignores `MOD`) and runs from the repo root.
 
 | Target             | Command                                                                             | Description                              |
 | ------------------ | ----------------------------------------------------------------------------------- | ---------------------------------------- |
@@ -173,8 +180,7 @@ make migrate MOD=k3s    # one-time local→R2 state copy
 
 ## Variables
 
-All Terraform input variables live in the module `variables.tf` files — `infra/doks/variables.tf`, `infra/k3s/variables.tf`, `infra/aws/variables.tf` — and carry their own `sensitive = true` flags and `optional()` object schemas. Read the source for the authoritative type/required/default split.
-
+All Terraform input variables live in the module `variables.tf` files — `infra/doks/variables.tf`, `infra/k3s/variables.tf`, `infra/aws/variables.tf`, `infra/cloudflare/variables.tf` — and carry their own `sensitive = true` flags and `optional()` object schemas. Read the source for the authoritative type/required/default split.
 > Secrets are injected from Infisical (the `infisical run` wrapper in the Makefile) and mapped to Terraform input vars as `TF_VAR_*`. A `secrets.tfvars.example` template is kept for reference, but it is not the live secret source.
 
 ---

@@ -1,0 +1,28 @@
+# Copy to a *.tfvars (gitignored) or fold into your infisical TF_VAR_* so these
+# reach Infisical under /terraform. Zone ID + live record contents must come
+# from a read-only Cloudflare API call or the dashboard — never from repo guess.
+
+# CLOUDFLARE_API_TOKEN and zone ids are sensitive → inject via infisical /
+# TF_VAR_, not committed. The shape below shows how infisical would set
+# TF_VAR_zones / TF_VAR_records if you prefer JSON env vars.
+
+zones = {
+  seekeru = {
+    # zone_id is the Cloudflare zone id (masked here; set it in infisical)
+    zone_id = "REPLACE_ME_ZONE_ID"
+  }
+}
+
+# After `terraform import`-ing the live records, mirror each one here so
+# config == state. Example (portfolio is a CNAME to the cloudflared tunnel):
+records = {
+  "portfolio" = {
+    zone_key = "seekeru"
+    type     = "CNAME"
+    name     = "portfolio"
+    # read the *live* target from the dashboard/API — do not invent it
+    content  = "<your-tunnel>.cfargotunnel.com"
+    ttl      = 1
+    proxied  = true
+  }
+}
