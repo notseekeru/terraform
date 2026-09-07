@@ -6,8 +6,10 @@
 > endpoint is no longer injected as an ambient `AWS_ENDPOINT_URL_S3` — it is
 > rendered into a per-module `backend.tfbackend.tpl` at init by
 > `scripts/render-tfbackend.sh`, so no `AWS_*`/endpoint env leaks to the AWS
-> provider. See root `README.md`/`Makefile` for the current mechanism; details
-> below describe *what was true at incident time* and why the split matters.
+> provider. The stale `AWS_ENDPOINT_URL_S3` Infisical secret was **removed**, and
+> the Makefile `plan`/`apply`/`destroy` targets `unset` it defensively as well.
+> See root `README.md`/`Makefile` for the current mechanism; details below
+> describe *what was true at incident time* and why the split matters.
 
 ## Summary
 

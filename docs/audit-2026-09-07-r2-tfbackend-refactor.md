@@ -13,7 +13,9 @@ the stale Infisical secret, and validate live state bindings.
 
 - Removed (shared, `/terraform`, dev): `AWS_ENDPOINT_URL_S3`. ✓ Confirmed gone.
 - Confirmed still present (required): `TF_VAR_R2_ACCOUNT_ID`, `TF_VAR_R2_ACCESS_KEY_ID`,
-  `TF_VAR_R2_BUCKET`, `TF_VAR_R2_SECRET_ACCESS_KEY`. ✓
+  `TF_VAR_R2_SECRET_ACCESS_KEY`. (`TF_VAR_R2_BUCKET` remains in Infisical but is no
+  longer consumed — the bucket name `terraform-state` is hardcoded in each
+  `backend.tfbackend.tpl`.) ✓
 - Observed leftovers (NOT removed, out of scope — flag only): `TF_VAR_SSH_PUBLIC_KEY`
   (repo prereq already dropped), `service_account_test` (looks like test debris).
 
