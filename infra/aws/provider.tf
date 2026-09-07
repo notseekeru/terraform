@@ -1,13 +1,14 @@
 provider "aws" {
   region = "ap-southeast-1"
 
-  # AWS_ENDPOINT_URL_S3 points at Cloudflare R2 for the remote-state backend. Without
-  # this override the provider would ALSO route aws_s3_bucket calls to R2 (which rejects
-  # real AWS AKIA keys with 'access key has length 20, should be 32'). Pin the
-  # provider to real AWS S3 so bucket resources land in AWS, not R2.
-  endpoints {
-    s3 = "https://s3.ap-southeast-1.amazonaws.com"
-  }
+  # No endpoints.s3 override is needed here. The R2 remote-state endpoint is now
+  # supplied to the backend via the per-module backend.tfbackend.tpl (rendered
+  # at init into infra/aws/.terraform/backend.generated.tfbackend), so nothing
+  # injects AWS_ENDPOINT_URL_S3 into this provider's environment at plan/apply.
+  # Real aws_s3_bucket / aws_s3_bucket_policy calls therefore resolve to real AWS
+  # S3 by default. If you ever reintroduce an ambient R2 endpoint env var here,
+  # you must re-add an endpoints.s3 pin to real S3 (see
+  # docs/incident-2026-08-27-r2-backend-credential-conflict.md).
 
   # Standard tags for cost tracking and identification
   default_tags {

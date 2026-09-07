@@ -1,7 +1,13 @@
 # R2 State Backend vs AWS Provider: Credential Collision (2026-08-27)
 
 > Root-cause note for the `InvalidAccessKeyId` / "value cannot be empty" failures
-> on `init`/`plan`. Config-change bug, no deployment or data impact.
+> on `init`/`plan`. Config-change bug, no deployment or data impact. **This is a
+> historical record.** The standing pattern has since evolved (2026-09): the R2
+> endpoint is no longer injected as an ambient `AWS_ENDPOINT_URL_S3` — it is
+> rendered into a per-module `backend.tfbackend.tpl` at init by
+> `scripts/render-tfbackend.sh`, so no `AWS_*`/endpoint env leaks to the AWS
+> provider. See root `README.md`/`Makefile` for the current mechanism; details
+> below describe *what was true at incident time* and why the split matters.
 
 ## Summary
 

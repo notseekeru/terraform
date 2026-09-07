@@ -37,11 +37,11 @@ State lives in a **Cloudflare R2 bucket** (`s3` backend, S3-compatible) with a p
 make migrate MOD=k3s    # type "yes" to copy local state into R2
 ```
 
-Backend config lives in each module's `versions.tf`. At `init`, R2 creds pass via `-backend-config` from Infisical env vars (`TF_VAR_R2_BUCKET`, `TF_VAR_R2_ACCOUNT_ID`, `TF_VAR_R2_ACCESS_KEY_ID`, `TF_VAR_R2_SECRET_ACCESS_KEY`); the endpoint comes from `AWS_ENDPOINT_URL_S3`. The `aws` module keeps its **real** AWS provider creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) separate from the R2 creds to avoid the collision in `docs/incident-2026-08-27-r2-backend-credential-conflict.md`. After `init`, the binding is cached in `infra/<MOD>/.terraform/`, so later `plan`/`apply`/`destroy` pick it up automatically.
+Backend config lives in each module's `versions.tf` stub (`backend "s3" {}`) plus a committed per-module template `infra/<MOD>/backend.tfbackend.tpl` that is the **single source of truth** for structural config once merged at `init`. The template holds `bucket`, `key`, `region`, `endpoints.s3`, and the `skip_*`/`use_lockfile` flags; the R2 account id in `endpoints.s3` is substituted at `init`-time from the Infisical var `TF_VAR_R2_ACCOUNT_ID` via `scripts/render-tfbackend.sh`. Only the secret keys (`access_key`/`secret_key`, from `TF_VAR_R2_ACCESS_KEY_ID`/`TF_VAR_R2_SECRET_ACCESS_KEY`) are passed as separate `-backend-config` flags. The endpoint is **not** injected as an ambient `AWS_ENDPOINT_URL_S3`, so nothing leaks the R2 endpoint to the AWS provider. The `aws` module keeps its **real** AWS provider creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) separate from the R2 creds to avoid the collision in `docs/incident-2026-08-27-r2-backend-credential-conflict.md`. After `init`, the binding is cached in `infra/<MOD>/.terraform/`, so later `plan`/`apply`/`destroy` pick it up automatically.
 
 ## Locking
 
-Opt-in per module via `use_lockfile = true` in `versions.tf`. R2 has no DynamoDB service, so only the S3-native lockfile (`<key>.tflock`, conditional `PutObject`) is viable — the `dynamodb_table` path can't be used. Verified working on this R2 bucket (2026-09-06, `aws` module): a concurrent `plan -lock-timeout=5s` failed with `Error acquiring the state lock` / HTTP `412 PreconditionFailed`. All four modules share the one `terraform-state` bucket, so one test covers them. Locking guards only concurrent Terraform runs on the **same** module's state — it does **not** stop out-of-band destructive changes (`make nuke-list`, console edits, `aws-nuke`).
+Opt-in per module via `use_lockfile = true` in each module's `infra/<MOD>/backend.tfbackend.tpl`, merged into the backend at `init`. R2 has no DynamoDB service, so only the S3-native lockfile (`<key>.tflock`, conditional `PutObject`) is viable — the `dynamodb_table` path can't be used. Verified working on this R2 bucket (2026-09-06, `aws` module): a concurrent `plan -lock-timeout=5s` failed with `Error acquiring the state lock` / HTTP `412 PreconditionFailed`. All four modules share the one `terraform-state` bucket, so one test covers them. Locking guards only concurrent Terraform runs on the **same** module's state — it does **not** stop out-of-band destructive changes (`make nuke-list`, console edits, `aws-nuke`).
 
 **Gotchas**
 
@@ -72,8 +72,8 @@ Locking already handles the concurrency risk; a pipeline would gate/queue `apply
 
 **Caveats**
 
-- Locking is opt-in per module (`use_lockfile = true`); DynamoDB isn't possible on R2 (no service) — the S3 lockfile, verified on R2, is the only mechanism.
-- R2 creds (`TF_VAR_R2_*` + `AWS_ENDPOINT_URL_S3`) stay separate from real AWS creds (`AWS_*`) — see the `InvalidAccessKeyId` incident doc.
+- Locking is opt-in per module (`use_lockfile = true` in `infra/<MOD>/backend.tfbackend.tpl`); DynamoDB isn't possible on R2 (no service) — the S3 lockfile, verified on R2, is the only mechanism.
+- R2 creds (`TF_VAR_R2_*`) — including the endpoint, which is rendered into the per-module backend template rather than shipped as an ambient `AWS_*` env var — stay separate from real AWS creds (`AWS_*`) — see the `InvalidAccessKeyId` incident doc.
 - `infra/<MOD>/terraform.tfstate*` local files are gitignored; after migration, primary state lives in R2 only.
 
 ---
@@ -103,7 +103,7 @@ make apply MOD=k3s
 The repo is **operator-reproducible, not fresh-clone-self-contained**. Before `make init`/`plan` works, on a new machine you need (none of it ships in this repo, by design):
 
 1. **Infisical identity** — copy `~/.config/infisical/` from an existing device (or `infisical login`), plus this workspace's local `.infisical.json` (`/terraform` dev).
-2. **Secrets populated** — the Infisical project must hold all `TF_VAR_*`/`AWS_*` the module needs (see each `variables.tf` + the `Makefile` targets).
+2. **Secrets populated** — the Infisical project must hold all `TF_VAR_*`/`AWS_*` the module needs (see each `variables.tf` + the `Makefile` targets), including the R2 set: `TF_VAR_R2_ACCOUNT_ID`, `TF_VAR_R2_ACCESS_KEY_ID`, `TF_VAR_R2_SECRET_ACCESS_KEY`. (The bucket name `terraform-state` and the endpoint shape live in the committed `backend.tfbackend.tpl`; the account id is substituted by `scripts/render-tfbackend.sh`, so the endpoint is not a standalone env secret.)
 3. **R2 state bucket live** — creds in Infisical must still point at the existing `terraform-state` bucket (state stays in R2, not the repo).
 4. **`gitops/` repo checked out at `../gitops/`** — `doks`/`k3s` read `app.yaml` via `file()` at apply time, so a missing path fails the ArgoCD-manifest step.
 5. **ArgoCD/GHCR repos reachable** — the PAT in Infisical must still be valid for the private `gitops` repo.
@@ -155,18 +155,18 @@ terraform/
 
 ## Makefile Workflow
 
-Module targets accept `MOD=doks`, `MOD=k3s`, `MOD=aws`, or `MOD=cloudflare`. The `infra/` prefix and Infisical secret flow are baked into each target. Sensitive vars (incl. the R2 credentials backing state) come from `infisical run`. Backend-facing targets (`init`, `upgradeinit`, `migrate`) exec terraform through `/bin/sh -c`, so the `$TF_VAR_R2_*` refs in `backend_config` are expanded by that shell from infisical's injected env (infisical itself execs directly and would pass them through unexpanded); plan/apply/destroy exec directly so the AWS provider sees native `AWS_*` creds. `nuke-list` is account-scoped (ignores `MOD`) and runs from the repo root.
+Module targets accept `MOD=doks`, `MOD=k3s`, `MOD=aws`, or `MOD=cloudflare`. The `infra/` prefix and Infisical secret flow are baked into each target. Sensitive vars (incl. the R2 credentials backing state) come from `infisical run`. Backend-facing targets (`init`, `upgradeinit`, `reconfigure`, `migrate`) first run `scripts/render-tfbackend.sh` to render `infra/$(MOD)/backend.tfbackend.tpl` (substituting the R2 account id from `$TF_VAR_R2_ACCOUNT_ID`) into a gitignored `.tfbackend`, then exec terraform through `/bin/sh -c` so the `$TF_VAR_R2_ACCESS_KEY_ID`/`$TF_VAR_R2_SECRET_ACCESS_KEY` cred flags expand from infisical's injected env (infisical itself execs directly and would pass them through unexpanded). plan/apply/destroy exec directly — with **no** R2 endpoint in their environment — so the AWS provider sees no R2 endpoint and uses real AWS creds. `nuke-list` is account-scoped (ignores `MOD`) and runs from the repo root.
 
 | Target             | Command                                                                             | Description                              |
 | ------------------ | ----------------------------------------------------------------------------------- | ---------------------------------------- |
-| `make init`        | `infisical run -- /bin/sh -c 'terraform ... init $(backend_config)'`                | Init providers + bind R2 backend         |
-| `make upgradeinit` | `infisical run -- /bin/sh -c 'terraform ... init -upgrade $(backend_config)'`       | Upgrade providers / re-bind backend      |
+| `make init`        | `infisical run -- /bin/sh -c 'render-tfbackend.sh && terraform ... init -backend-config=<gen>'` | Init providers + bind R2 backend         |
+| `make upgradeinit` | `infisical run -- /bin/sh -c 'render-tfbackend.sh && terraform ... init -upgrade -backend-config=<gen>'` | Upgrade providers / re-bind backend      |
 | `make plan`        | `infisical run -- terraform -chdir=infra/$(MOD) plan`                               | Preview changes                          |
 | `make apply`       | `infisical run -- terraform -chdir=infra/$(MOD) apply`                              | Apply changes                            |
 | `make destroy`     | `infisical run -- terraform -chdir=infra/$(MOD) destroy`                            | Tear down resources                      |
 | `make fmt`         | `terraform -chdir=infra/$(MOD) fmt`                                                 | Format all `.tf` files                   |
 | `make validate`    | `terraform -chdir=infra/$(MOD) validate`                                            | Validate configuration                   |
-| `make migrate`     | `infisical run -- /bin/sh -c 'terraform ... init -migrate-state $(backend_config)'` | One-time: push local state to R2         |
+| `make migrate`     | `infisical run -- /bin/sh -c 'render-tfbackend.sh && terraform ... init -migrate-state -backend-config=<gen>'` | One-time: push local state to R2         |
 | `make dump`        | `kubectl exec ... pg_dump \| gzip > ~/backups/`                                     | Backup diagramdb from local k3s postgres |
 | `make nuke-list`   | `infisical run -- aws-nuke -c nuke-config.yaml (dry-run)`                           | Dry-run aws-nuke sweep (deletes nothing) |
 
@@ -282,7 +282,7 @@ the tunnel hostnames) so each module is self-contained. See `AWS.md` for the ful
 ### Deployment notes (verified)
 
 - **Live endpoints:** `https://alb.seekeru.tech` (200, nginx) · `http://alb.seekeru.tech` (301 → HTTPS) · CloudFront `https://d14f3y8b1rk8te.cloudfront.net`.
-- **Provider vs. R2 endpoint:** because the R2 state backend injects `AWS_ENDPOINT_URL_S3`, the AWS provider must override `endpoints.s3` to `https://s3.<region>.amazonaws.com` (`provider.tf`), or real `aws_s3_bucket` calls hit R2 and fail with `access key has length 20, should be 32`.
+- **Provider vs. R2 endpoint:** the R2 remote-state endpoint is delivered only to the backend, via the per-module `.tfbackend` template rendered at init — never as an ambient `AWS_ENDPOINT_URL_S3`. So the AWS provider in `provider.tf` needs **no** `endpoints.s3` override; real `aws_s3_bucket`/`aws_s3_bucket_policy` calls resolve to AWS by default. Do not reintroduce `AWS_ENDPOINT_URL_S3` into the runtime env, or the `access key has length 20, should be 32` / R2-routing bug returns.
 - **DB user:** `dbadmin` (PostgreSQL reserves `admin`).
 - **Apply is non-interactive:** `make apply MOD=aws` prompts; use `terraform -chdir=infra/aws apply -auto-approve` (or pipe) for headless runs.
 - **Upgrade + revalidation matrix:** see `AWS.md` §8 for ranked upgrade paths and the drift-check commands.
@@ -396,7 +396,7 @@ direnv allow
 - The DO token is consumed via `var.DO_TOKEN` (marked `sensitive = true`).
 - GitHub PAT and credentials are written directly to Kubernetes secrets — they never leave the Terraform state.
 - The Cloudflare module uses `TF_VAR_CLOUDFLARE_API_TOKEN` (provider) with `Zone → DNS → Edit`. The current key is an account**-wide** `terraform-admin` token (broad). It works, but it is not least-privilege; if you want a tighter posture later, mint a token scoped to just the `seekeru.tech` zone (`Zone:DNS:Edit`) and update the Infisical value.
-- R2 state-backend creds are namespaced `TF_VAR_R2_*` (+ `AWS_ENDPOINT_URL_S3`) and kept distinct from the real AWS provider creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) to avoid the collision in `docs/incident-2026-08-27-r2-backend-credential-conflict.md`.
+- R2 state-backend creds are namespaced `TF_VAR_R2_*` and the R2 endpoint is rendered into each module's backend template at init — neither is shipped as an ambient `AWS_ENDPOINT_URL_S3`/real-AWS `AWS_*` env var — keeping R2 creds distinct from the real AWS provider creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`). This is the fix for `docs/incident-2026-08-27-r2-backend-credential-conflict.md`.
 - `secrets.tfvars`, `*.tfvars`, `kubeconfig`, and `.infisical.json` are all in `.gitignore`.
 - `secrets.tfvars.example` is safe to commit — it has dummy/empty values for all secrets.
 - Consider GitLeaks + pre-commit hooks to prevent accidental secret commits.

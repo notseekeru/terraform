@@ -3,15 +3,22 @@ ENV ?= dev
 SECRETS_PATH ?= /terraform
 
 # R2 state-bucket creds are namespaced TF_VAR_R2_* so they never collide with the
-# AWS provider's native AWS_ACCESS_KEY_ID. The deprecated `endpoint` backend-config
-# key is rejected by Terraform >=1.5, so the R2 URL is injected instead via the
-# modern env-var source AWS_ENDPOINT_URL_S3 (= endpoints.s3). backend_config keeps
-# the flat, non-deprecated keys; bucket/key expand from infisical-injected TF_VAR_R2_*.
-backend_config = -backend-config="bucket=$$TF_VAR_R2_BUCKET" \
-	-backend-config="key=terraform/$(MOD)/terraform.tfstate" \
-	-backend-config="region=auto" \
-	-backend-config="access_key=$$TF_VAR_R2_ACCESS_KEY_ID" \
+# AWS provider's native AWS_ACCESS_KEY_ID. Non-secret backend config (bucket, key,
+# region, endpoint shape, skip_*/use_lockfile) comes from the committed per-module
+# template infra/<MOD>/backend.tfbackend.tpl, rendered by scripts/render-tfbackend.sh
+# at init-time (R2 account id substituted from $TF_VAR_R2_ACCOUNT_ID). Only the two
+# secret keys are passed as -backend-config flags below, expanding from
+# infisical-injected TF_VAR_R2_*.
+TFBACKEND_TEMPLATE = infra/$(MOD)/backend.tfbackend.tpl
+TFBACKEND_OUT = infra/$(MOD)/.terraform/backend.generated.tfbackend
+backend_render = scripts/render-tfbackend.sh $(MOD) $(TFBACKEND_TEMPLATE) $(TFBACKEND_OUT)
+backend_creds = -backend-config="access_key=$$TF_VAR_R2_ACCESS_KEY_ID" \
 	-backend-config="secret_key=$$TF_VAR_R2_SECRET_ACCESS_KEY"
+# Guarantee the AWS provider never sees an R2 endpoint, even if a stale
+# AWS_ENDPOINT_URL_S3 is still present in Infisical and injected by `infisical run`.
+# The R2 endpoint reaches the backend only via the rendered .tfbackend at init.
+no_r2_endpoint = unset AWS_ENDPOINT_URL_S3 AWS_ENDPOINT_URL AWS_S3_ENDPOINT; \
+	AWS_EC2_METADATA_DISABLED=true
 
 .PHONY: fmt validate init upgradeinit reconfigure plan apply destroy migrate dump secrets verify-db-auth nuke-list
 
@@ -21,32 +28,33 @@ fmt:
 validate:
 	terraform -chdir=infra/$(MOD) validate
 
-# The backend targets exec terraform through a shell so the \$$TF_VAR_R2_* refs in
-# backend_config expand from infisical's injected env (infisical itself execs directly
-# and would otherwise pass them verbatim as empty strings).
+# Backend-only targets render the template then bind R2. They run through a shell
+# so the $$TF_VAR_R2_* cred refs expand from infisical's injected env. plan/apply/
+# destroy run afterwards with NO R2 endpoint in their env, so the AWS provider in
+# infra/aws defaults to real S3 and needs no endpoints.s3 override.
 init:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
-		'terraform -chdir=infra/$(MOD) init $(backend_config)'
+		'$(backend_render) && terraform -chdir=infra/$(MOD) init -backend-config=$(TFBACKEND_OUT) $(backend_creds)'
 
 upgradeinit:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
-		'terraform -chdir=infra/$(MOD) init -upgrade $(backend_config)'
+		'$(backend_render) && terraform -chdir=infra/$(MOD) init -upgrade -backend-config=$(TFBACKEND_OUT) $(backend_creds)'
 
 plan:
-	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-		terraform -chdir=infra/$(MOD) plan
+	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
+		'$(no_r2_endpoint) terraform -chdir=infra/$(MOD) plan'
 
 refresh:
-	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-		terraform -chdir=infra/$(MOD) refresh
+	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
+		'$(no_r2_endpoint) terraform -chdir=infra/$(MOD) refresh'
 
 apply:
-	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-		terraform -chdir=infra/$(MOD) apply
+	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
+		'$(no_r2_endpoint) terraform -chdir=infra/$(MOD) apply'
 
 destroy:
-	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-		terraform -chdir=infra/$(MOD) destroy
+	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
+		'$(no_r2_endpoint) terraform -chdir=infra/$(MOD) destroy'
 
 # Sweeps billable drift across the account via nuke-config.yaml. aws-nuke has
 # NO tag-based opt-out. the config excludes KMS + IAM so this never orphans the
@@ -63,12 +71,12 @@ nuke-list:
 
 reconfigure:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
-		'terraform -chdir=infra/$(MOD) init -reconfigure $(backend_config)'
+		'$(backend_render) && terraform -chdir=infra/$(MOD) init -reconfigure -backend-config=$(TFBACKEND_OUT) $(backend_creds)'
 
 # One-time (per module): push local state to R2. Only needed on first backend setup.
 migrate:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
-		'terraform -chdir=infra/$(MOD) init -migrate-state $(backend_config)'
+		'$(backend_render) && terraform -chdir=infra/$(MOD) init -migrate-state -backend-config=$(TFBACKEND_OUT) $(backend_creds)'
 
 # Dump diagramdb from local k3s postgres to ~/backups
 

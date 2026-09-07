@@ -1,13 +1,9 @@
 terraform {
   required_version = ">= 1.0"
 
-  backend "s3" {
-    skip_region_validation      = true
-    skip_credentials_validation = true
-    skip_requesting_account_id  = true
-    # S3-native lockfile locking (guards concurrent applies per module).
-    use_lockfile = true
-  }
+  # All backend config (bucket/key/region/endpoint/skip_*/use_lockfile) is
+  # supplied at init from infra/doks/backend.tfbackend.tpl (see Makefile).
+  backend "s3" {}
 
   required_providers {
     digitalocean = {
