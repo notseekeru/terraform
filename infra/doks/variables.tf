@@ -26,8 +26,8 @@ variable "GITHUB_REPO_URL" {
 }
 
 variable "app_yaml_path" {
-  type    = string
-  default = null
+  type        = string
+  default     = null
   description = "Path to app.yaml manifest. Defaults to ../../../gitops/app.yaml relative to this module."
 }
 

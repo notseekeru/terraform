@@ -9,6 +9,6 @@ provider "kubernetes" {
 }
 
 provider "kubectl" {
-  config_path       = pathexpand("~/.kube/config")
-  load_config_file  = true
+  config_path      = pathexpand("~/.kube/config")
+  load_config_file = true
 }

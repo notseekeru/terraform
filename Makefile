@@ -11,6 +11,8 @@ SECRETS_PATH ?= /terraform
 # infisical-injected TF_VAR_R2_*.
 TFBACKEND_TEMPLATE = infra/$(MOD)/backend.tfbackend.tpl
 TFBACKEND_OUT = infra/$(MOD)/.terraform/backend.generated.tfbackend
+# Path terraform consumes AFTER -chdir=infra/$(MOD), so it is module-relative.
+TFBACKEND_OUT_REL = .terraform/backend.generated.tfbackend
 backend_render = scripts/render-tfbackend.sh $(MOD) $(TFBACKEND_TEMPLATE) $(TFBACKEND_OUT)
 backend_creds = -backend-config="access_key=$$TF_VAR_R2_ACCESS_KEY_ID" \
 	-backend-config="secret_key=$$TF_VAR_R2_SECRET_ACCESS_KEY"
@@ -34,11 +36,11 @@ validate:
 # infra/aws defaults to real S3 and needs no endpoints.s3 override.
 init:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
-		'$(backend_render) && terraform -chdir=infra/$(MOD) init -backend-config=$(TFBACKEND_OUT) $(backend_creds)'
+		'$(backend_render) && terraform -chdir=infra/$(MOD) init -backend-config=$(TFBACKEND_OUT_REL) $(backend_creds)'
 
 upgradeinit:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
-		'$(backend_render) && terraform -chdir=infra/$(MOD) init -upgrade -backend-config=$(TFBACKEND_OUT) $(backend_creds)'
+		'$(backend_render) && terraform -chdir=infra/$(MOD) init -upgrade -backend-config=$(TFBACKEND_OUT_REL) $(backend_creds)'
 
 plan:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
@@ -71,12 +73,12 @@ nuke-list:
 
 reconfigure:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
-		'$(backend_render) && terraform -chdir=infra/$(MOD) init -reconfigure -backend-config=$(TFBACKEND_OUT) $(backend_creds)'
+		'$(backend_render) && terraform -chdir=infra/$(MOD) init -reconfigure -backend-config=$(TFBACKEND_OUT_REL) $(backend_creds)'
 
 # One-time (per module): push local state to R2. Only needed on first backend setup.
 migrate:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
-		'$(backend_render) && terraform -chdir=infra/$(MOD) init -migrate-state -backend-config=$(TFBACKEND_OUT) $(backend_creds)'
+		'$(backend_render) && terraform -chdir=infra/$(MOD) init -migrate-state -backend-config=$(TFBACKEND_OUT_REL) $(backend_creds)'
 
 # Dump diagramdb from local k3s postgres to ~/backups
 
