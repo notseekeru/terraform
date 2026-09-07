@@ -1,5 +1,9 @@
 # Audit — R2 Backend Endpoint Refactor (2026-09-07)
 
+> Operational/dated record of what was done and verified. For the durable **decision**
+> and the old-vs-new workflow comparison, see **ADR 0001**
+> (`docs/adr/0001-r2-endpoint-via-per-module-tfbackend.md`).
+
 Scope: verify Option-2 refactor (R2 backend endpoint delivered via per-module
 `.tfbackend` template instead of the ambient `AWS_ENDPOINT_URL_S3` env var), remove
 the stale Infisical secret, and validate live state bindings.
