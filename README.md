@@ -13,7 +13,6 @@
 | **Terraform**          | `>= 1.0` ([install guide](https://developer.hashicorp.com/terraform/install))            |
 | **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — needed only for `doks`      |
 | **Cloudflare token**  | API token with `Zone → DNS → Edit` (`TF_VAR_CLOUDFLARE_API_TOKEN`) — needed by `cloudflare` module |
-| **SSH Keys**           | Public keys uploaded to your DO account or provided inline via `secrets.tfvars`          |
 | **k3s**                | An existing k3s cluster with `~/.kube/config` — see [K3s Module](#k3s-module-local)      |
 | **Make**               | (Optional) `make` for the workflow targets below                                         |
 | **Nix**                | (Optional) `nix develop` for an isolated dev shell — see [Nix Dev Shell](#nix-dev-shell) |
@@ -23,7 +22,7 @@
 
 ## State Management
 
-State lives in a **Cloudflare R2 bucket** (`s3` backend, S3-compatible) with a per-module key — no local `terraform.tfstate`.
+State lives in a **Cloudflare R2 bucket** (`s3` backend, S3-compatible) with a per-module key — no committed local `terraform.tfstate`.
 
 | Module    | State key                             | Backend |
 | --------- | ------------------------------------- | ------- |
@@ -117,7 +116,7 @@ terraform/
 │   │   ├── variables.tf     #   CLOUDFLARE_TOKEN, GITHUB_*, DIAGRAM_API_KEY, POSTGRES_PASSWORD
 │   │   └── main.tf          #   helm releases → self-hosted PG StatefulSet → secrets → argocd app
 │   ├── aws/                 #   state #3 — AWS sandbox (S3, RDS, VPC, ASG, CloudFront)
-│   │   ├── versions.tf      #   aws provider + s3(R2) backend
+│   │   ├── versions.tf      #   aws + aliased cloudflare providers + s3(R2) backend
 │   │   ├── provider.tf      #   aws provider, region + default tags
 │   │   ├── variables.tf     #   instance classes, POSTGRES_PASSWORD, ALERT_EMAIL
 │   │   ├── vpc.tf           #   VPC, subnets, route tables, IGW
