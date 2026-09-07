@@ -37,7 +37,7 @@ State lives in a **Cloudflare R2 bucket** (`s3` backend, S3-compatible) with a p
 make migrate MOD=k3s    # type "yes" to copy local state into R2
 ```
 
-Backend config lives in each module's `versions.tf` stub (`backend "s3" {}`) plus a committed per-module template `infra/<MOD>/backend.tfbackend.tpl` that is the **single source of truth** for structural config once merged at `init`. The template holds `bucket`, `key`, `region`, `endpoints.s3`, and the `skip_*`/`use_lockfile` flags; the R2 account id in `endpoints.s3` is substituted at `init`-time from the Infisical var `TF_VAR_R2_ACCOUNT_ID` via `scripts/render-tfbackend.sh`. Only the secret keys (`access_key`/`secret_key`, from `TF_VAR_R2_ACCESS_KEY_ID`/`TF_VAR_R2_SECRET_ACCESS_KEY`) are passed as separate `-backend-config` flags. The endpoint is **not** injected as an ambient `AWS_ENDPOINT_URL_S3`, so nothing leaks the R2 endpoint to the AWS provider. The `aws` module keeps its **real** AWS provider creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) separate from the R2 creds to avoid the collision in `docs/incident-2026-08-27-r2-backend-credential-conflict.md`. After `init`, the binding is cached in `infra/<MOD>/.terraform/`, so later `plan`/`apply`/`destroy` pick it up automatically. For the *why* behind this design and the old-vs-new comparison, see **ADR 0001** (`docs/adr/0001-r2-endpoint-via-per-module-tfbackend.md`).
+Backend config lives in each module's `versions.tf` stub (`backend "s3" {}`) plus a committed per-module template `infra/<MOD>/backend.tfbackend.tpl` that is the **single source of truth** for structural config once merged at `init`. The template holds `bucket`, `key`, `region`, `endpoints.s3`, and the `skip_*`/`use_lockfile` flags; the R2 account id in `endpoints.s3` is substituted at `init`-time from the Infisical var `TF_VAR_R2_ACCOUNT_ID` via `scripts/render-tfbackend.sh`. Only the secret keys (`access_key`/`secret_key`, from `TF_VAR_R2_ACCESS_KEY_ID`/`TF_VAR_R2_SECRET_ACCESS_KEY`) are passed as separate `-backend-config` flags. The endpoint is **not** injected as an ambient `AWS_ENDPOINT_URL_S3`, so nothing leaks the R2 endpoint to the AWS provider. The `aws` module keeps its **real** AWS provider creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) separate from the R2 creds to avoid the collision in `docs/incident-2026-08-27-r2-backend-credential-conflict.md`. After `init`, the binding is cached in `infra/<MOD>/.terraform/`, so later `plan`/`apply`/`destroy` pick it up automatically. For the *why* behind this design and the old-vs-new comparison, see **ADR 0001** (`docs/adr/0001-r2-endpoint-via-per-module-tfbackend.md`). Local `infra/<MOD>/terraform.tfstate*` files are gitignored; after migration, primary state lives in R2 only.
 
 ## Locking
 
@@ -66,15 +66,11 @@ Opt-in per module via `use_lockfile = true` in each module's `infra/<MOD>/backen
 
 ## No CI/CD is deliberate
 
-Locking already handles the concurrency risk; a pipeline would gate/queue `apply`, which matters only once >1 person can run it. This is a **single-owner sandbox** and applies are human-gated (`make apply` prompts; README requires a human-reviewed `plan`). A plan→approve→apply pipeline now would add a runner, a CI credential surface, and deploy latency for zero extra safety.
+This is a **single-owner sandbox**: applies are human-gated (`make apply` prompts; the workflow requires a human-reviewed `plan`), and the R2 `use_lockfile` guard already serializes concurrent applies of the same module. Adding a plan→approve→apply pipeline now would add a runner, a CI credential surface, and deploy latency for zero extra safety.
 
-**Add orchestration only if:** a second person or a machine needs `apply` access (need one authorized path + audit trail), or you require non-interactive, reviewed deploys. The cheap fix then is a **single centralized apply path** (one shared runner/entrypoint authorized to `apply`); reach for Atlantis/Spacelift/Terraform Cloud only when you also want PR-driven plan/apply, policy, or per-user audit.
+Re-introduce orchestration **only if** a second person/machine needs `apply` access, or you need non-interactive reviewed deploys — then escalate: (1) a single centralized apply path, (2) Atlantis/Spacelift/Terraform Cloud for PR-driven apply/policy/audit.
 
-**Caveats**
-
-- Locking is opt-in per module (`use_lockfile = true` in `infra/<MOD>/backend.tfbackend.tpl`); DynamoDB isn't possible on R2 (no service) — the S3 lockfile, verified on R2, is the only mechanism.
-- R2 creds (`TF_VAR_R2_*`) — including the endpoint, which is rendered into the per-module backend template rather than shipped as an ambient `AWS_*` env var — stay separate from real AWS creds (`AWS_*`) — see the `InvalidAccessKeyId` incident doc.
-- `infra/<MOD>/terraform.tfstate*` local files are gitignored; after migration, primary state lives in R2 only.
+> Full rationale, trade-offs, and deciding triggers: **ADR 0002** (`docs/adr/0002-no-cicd-manual-human-gated-applies.md`).
 
 ---
 
