@@ -98,6 +98,18 @@ make plan MOD=k3s
 make apply MOD=k3s
 ```
 
+### Fresh clone on a new device
+
+The repo is **operator-reproducible, not fresh-clone-self-contained**. Before `make init`/`plan` works, on a new machine you need (none of it ships in this repo, by design):
+
+1. **Infisical identity** — copy `~/.config/infisical/` from an existing device (or `infisical login`), plus this workspace's local `.infisical.json` (`/terraform` dev).
+2. **Secrets populated** — the Infisical project must hold all `TF_VAR_*`/`AWS_*` the module needs (see each `variables.tf` + the `Makefile` targets).
+3. **R2 state bucket live** — creds in Infisical must still point at the existing `terraform-state` bucket (state stays in R2, not the repo).
+4. **`gitops/` repo checked out at `../gitops/`** — `doks`/`k3s` read `app.yaml` via `file()` at apply time, so a missing path fails the ArgoCD-manifest step.
+5. **ArgoCD/GHCR repos reachable** — the PAT in Infisical must still be valid for the private `gitops` repo.
+
+Then: `make init MOD=<m>` binds R2 and re-fetches providers. Note `.terraform.lock.hcl` is gitignored, so first `init` on a new machine re-resolves provider versions against the `~>` floors (a minor drift vector, not a blocker), and `.gitignore` also drops any local `*.tfstate`.
+
 ---
 
 ## Project Layout
