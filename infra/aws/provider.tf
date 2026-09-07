@@ -18,3 +18,11 @@ provider "aws" {
     }
   }
 }
+
+# Cloudflare provider (aliased) backs this module's own DNS records so the ALB hostname
+# (alb.seekeru.tech) and its ACM-validation CNAME auto-issue in one `apply` — no dashboard.
+# Uses the same TF_VAR_CLOUDFLARE_API_TOKEN as the infra/cloudflare module.
+provider "cloudflare" {
+  alias     = "cf"
+  api_token = var.CLOUDFLARE_API_TOKEN
+}

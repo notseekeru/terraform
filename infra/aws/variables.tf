@@ -37,7 +37,20 @@ variable "credit_cap_usd" {
 variable "alb_domain" {
   type    = string
   default = ""
-  # Custom domain (e.g. app.example.tech) for ACM HTTPS on the ALB.
-  # Empty => ALB stays HTTP:80 only; DNS is managed in Cloudflare,
-  # so supply the value at apply time via -var or TF_VAR_alb_domain.
+  # Custom domain (e.g. alb.seekeru.tech) for ACM HTTPS on the ALB.
+  # Empty => ALB stays HTTP:80 only and no DNS record is managed.
+  # When set: infra/aws creates its own Cloudflare records (see compute.tf)
+  # pointing at the ALB and auto-issuing the ACM cert via the validation CNAME.
 }
+
+variable "CLOUDFLARE_API_TOKEN" {
+  type      = string
+  sensitive = true
+  # Injected via infisical TF_VAR_CLOUDFLARE_API_TOKEN (same as infra/cloudflare).
+}
+
+variable "cloudflare_zone_id" {
+  type    = string
+  default = "5a1a5f826d5a3398dc78ba360e24dfa0" # seekeru.tech
+}
+

@@ -24,12 +24,49 @@ resource "aws_acm_certificate" "alb" {
   validation_method = "DNS"
 }
 
+# --- Auto-issued ACM via Cloudflare DNS (no manual dashboard step) ---
+#
+# Two Cloudflare records make the cert self-issuing in this module:
+#  1. alb.seekeru.tech -> ALB DNS (the hostname, tracks ALB recreation)
+#  2. the ACM validation CNAME(s) -> *_acm-validations.aws, so aws_acm_
+#     certificate_validation below can poll until ISSUED.
+
+resource "cloudflare_dns_record" "alb" {
+  count    = var.alb_domain != "" ? 1 : 0
+  provider = cloudflare.cf
+
+  zone_id = var.cloudflare_zone_id
+  name    = var.alb_domain
+  type    = "CNAME"
+  content = aws_lb.main.dns_name
+  proxied = false
+  ttl     = 1
+}
+
+resource "cloudflare_dns_record" "alb_validation" {
+  for_each = {
+    for dvo in try(aws_acm_certificate.alb[0].domain_validation_options, []) :
+    dvo.domain_name => dvo
+  }
+  provider = cloudflare.cf
+
+  zone_id = var.cloudflare_zone_id
+  name    = each.value.resource_record_name
+  type    = each.value.resource_record_type
+  content = each.value.resource_record_value
+  proxied = false
+  ttl     = 1
+}
+
 resource "aws_acm_certificate_validation" "alb" {
   count           = var.alb_domain != "" ? 1 : 0
   certificate_arn = aws_acm_certificate.alb[0].arn
-  # Validation is done via a CNAME added manually in Cloudflare (see the
-  # alb_domain_validation_cname output). This resource polls until the cert
-  # reaches ISSUED, so the :443 listener below only binds a valid certificate.
+  # Auto-validate: poll ACM until ISSUED, checking each CF-created validation CNAME.
+  validation_record_fqdns = [
+    for k, v in cloudflare_dns_record.alb_validation :
+    v.hostname
+  ]
+
   timeouts {
     create = "10m"
   }
