@@ -3,7 +3,7 @@
 - **Status:** Accepted (implemented 2026-09, live-verified on all four modules)
 - **Date:** 2026-09-07
 - **Supersedes:** the `endpoints.s3` provider override (the "bandaid") from the earlier R2/AWS credential-collision incident (`docs/incident-2026-08-27-r2-backend-credential-conflict.md`)
-- **Related:** `Makefile`, `scripts/render-tfbackend.sh`, `infra/<MOD>/backend.tfbackend.{tpl,}`
+- **Related:** `Makefile`, `scripts/render-tfbackend.sh`, `infra/<MOD>/backend.tfbackend.tpl`
 
 ---
 
@@ -108,10 +108,7 @@ real, per-module backend config.**
 
 ## Alternatives considered (and rejected)
 
-1. **Keep the ambient env var, scope it to `init` only.** Rejected: live verification showed
-   the endpoint is consumed at `plan`/`apply` from env (the backend cache stores it as a
-   real value only when it is static backend config). Scoping it away from plan/apply would
-   break state refresh. Also still leaves the endpoint in the ambient namespace.
+1. **Keep the ambient env var, scope it to `init` only.** Rejected: a single terraform process runs both backend and provider from one OS environment, so an ambient var can't be limited to one consumer. Observations during migration supported this: the endpoint only became durable (available to later plan/apply from the backend cache) when it was static backend config, so leaving it only in the init-time env was not reliable for plan/apply. It also keeps the endpoint in the ambient namespace. (Not a controlled negative test; rejected on architecture grounds + these observations.)
 2. **Hardcode the account id in committed static `.tfbackend` files.** Rejected: makes the
    repo machine/account-specific, hurting the "operator-reproducible on a fresh clone" goal.
 3. **Separate the R2 backend and real AWS provider into two separate Terraform

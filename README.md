@@ -8,15 +8,15 @@
 
 ## Prerequisites
 
-| Requirement            | Details                                                                                  |
-| ---------------------- | ---------------------------------------------------------------------------------------- |
-| **Terraform**          | `>= 1.0` ([install guide](https://developer.hashicorp.com/terraform/install))            |
-| **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — needed only for `doks`      |
-| **Cloudflare token**  | API token with `Zone → DNS → Edit` (`TF_VAR_CLOUDFLARE_API_TOKEN`) — needed by `cloudflare` module |
-| **k3s**                | An existing k3s cluster with `~/.kube/config` — see [K3s Module](#k3s-module-local)      |
-| **Make**               | (Optional) `make` for the workflow targets below                                         |
-| **Nix**                | (Optional) `nix develop` for an isolated dev shell — see [Nix Dev Shell](#nix-dev-shell) |
-| **direnv**             | (Optional) Auto-loads the Nix shell, pulls latest, and exports `KUBECONFIG` on `cd`      |
+| Requirement            | Details                                                                                            |
+| ---------------------- | -------------------------------------------------------------------------------------------------- |
+| **Terraform**          | `>= 1.0` ([install guide](https://developer.hashicorp.com/terraform/install))                      |
+| **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — needed only for `doks`                            |
+| **Cloudflare token**   | API token with `Zone → DNS → Edit` (`TF_VAR_CLOUDFLARE_API_TOKEN`) — needed by `cloudflare` module |
+| **k3s**                | An existing k3s cluster with `~/.kube/config` — see [K3s Module](#k3s-module-local)                |
+| **Make**               | (Optional) `make` for the workflow targets below                                                   |
+| **Nix**                | (Optional) `nix develop` for an isolated dev shell — see [Nix Dev Shell](#nix-dev-shell)           |
+| **direnv**             | (Optional) Auto-loads the Nix shell, pulls latest, and exports `KUBECONFIG` on `cd`                |
 
 ---
 
@@ -24,11 +24,11 @@
 
 State lives in a **Cloudflare R2 bucket** (`s3` backend, S3-compatible) with a per-module key — no committed local `terraform.tfstate`.
 
-| Module    | State key                             | Backend |
-| --------- | ------------------------------------- | ------- |
-| `doks`    | `terraform/doks/terraform.tfstate`    | s3      |
-| `k3s`     | `terraform/k3s/terraform.tfstate`     | s3      |
-| `aws`     | `terraform/aws/terraform.tfstate`     | s3      |
+| Module       | State key                                | Backend |
+| ------------ | ---------------------------------------- | ------- |
+| `doks`       | `terraform/doks/terraform.tfstate`       | s3      |
+| `k3s`        | `terraform/k3s/terraform.tfstate`        | s3      |
+| `aws`        | `terraform/aws/terraform.tfstate`        | s3      |
 | `cloudflare` | `terraform/cloudflare/terraform.tfstate` | s3      |
 
 **First-time / after backend change** — push local state up (per module):
@@ -37,7 +37,7 @@ State lives in a **Cloudflare R2 bucket** (`s3` backend, S3-compatible) with a p
 make migrate MOD=k3s    # type "yes" to copy local state into R2
 ```
 
-Backend config lives in each module's `versions.tf` stub (`backend "s3" {}`) plus a committed per-module template `infra/<MOD>/backend.tfbackend.tpl` that is the **single source of truth** for structural config once merged at `init`. The template holds `bucket`, `key`, `region`, `endpoints.s3`, and the `skip_*`/`use_lockfile` flags; the R2 account id in `endpoints.s3` is substituted at `init`-time from the Infisical var `TF_VAR_R2_ACCOUNT_ID` via `scripts/render-tfbackend.sh`. Only the secret keys (`access_key`/`secret_key`, from `TF_VAR_R2_ACCESS_KEY_ID`/`TF_VAR_R2_SECRET_ACCESS_KEY`) are passed as separate `-backend-config` flags. The endpoint is **not** injected as an ambient `AWS_ENDPOINT_URL_S3`, so nothing leaks the R2 endpoint to the AWS provider. The `aws` module keeps its **real** AWS provider creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) separate from the R2 creds to avoid the collision in `docs/incident-2026-08-27-r2-backend-credential-conflict.md`. After `init`, the binding is cached in `infra/<MOD>/.terraform/`, so later `plan`/`apply`/`destroy` pick it up automatically. For the *why* behind this design and the old-vs-new comparison, see **ADR 0001** (`docs/adr/0001-r2-endpoint-via-per-module-tfbackend.md`). Local `infra/<MOD>/terraform.tfstate*` files are gitignored; after migration, primary state lives in R2 only.
+Backend config lives in each module's `versions.tf` stub (`backend "s3" {}`) plus a committed per-module template `infra/<MOD>/backend.tfbackend.tpl` that is the **single source of truth** for structural config once merged at `init`. The template holds `bucket`, `key`, `region`, `endpoints.s3`, and the `skip_*`/`use_lockfile` flags; the R2 account id in `endpoints.s3` is substituted at `init`-time from the Infisical var `TF_VAR_R2_ACCOUNT_ID` via `scripts/render-tfbackend.sh`. Only the secret keys (`access_key`/`secret_key`, from `TF_VAR_R2_ACCESS_KEY_ID`/`TF_VAR_R2_SECRET_ACCESS_KEY`) are passed as separate `-backend-config` flags. The endpoint is **not** injected as an ambient `AWS_ENDPOINT_URL_S3`, so nothing leaks the R2 endpoint to the AWS provider. The `aws` module keeps its **real** AWS provider creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) separate from the R2 creds to avoid the collision in `docs/incident-2026-08-27-r2-backend-credential-conflict.md`. After `init`, the binding is cached in `infra/<MOD>/.terraform/`, so later `plan`/`apply`/`destroy` pick it up automatically. For the _why_ behind this design and the old-vs-new comparison, see **ADR 0001** (`docs/adr/0001-r2-endpoint-via-per-module-tfbackend.md`). Local `infra/<MOD>/terraform.tfstate*` files are gitignored; after migration, primary state lives in R2 only.
 
 ## Locking
 
@@ -153,26 +153,26 @@ terraform/
 
 Module targets accept `MOD=doks`, `MOD=k3s`, `MOD=aws`, or `MOD=cloudflare`. The `infra/` prefix and Infisical secret flow are baked into each target. Sensitive vars (incl. the R2 credentials backing state) come from `infisical run`. Backend-facing targets (`init`, `upgradeinit`, `reconfigure`, `migrate`) first run `scripts/render-tfbackend.sh` to render `infra/$(MOD)/backend.tfbackend.tpl` (substituting the R2 account id from `$TF_VAR_R2_ACCOUNT_ID`) into a gitignored `.tfbackend`, then exec terraform through `/bin/sh -c` so the `$TF_VAR_R2_ACCESS_KEY_ID`/`$TF_VAR_R2_SECRET_ACCESS_KEY` cred flags expand from infisical's injected env (infisical itself execs directly and would pass them through unexpanded). plan/apply/refresh/destroy exec through a small guard that `unset`s any ambient R2 endpoint vars (`AWS_ENDPOINT_URL_S3`/`AWS_ENDPOINT_URL`/`AWS_S3_ENDPOINT`), so the AWS provider never sees an R2 endpoint and uses real AWS creds even if a stale secret is present in Infisical. `nuke-list` is account-scoped (ignores `MOD`) and runs from the repo root.
 
-| Target             | Command                                                                             | Description                              |
-| ------------------ | ----------------------------------------------------------------------------------- | ---------------------------------------- |
-| `make init`        | `infisical run -- /bin/sh -c 'render-tfbackend.sh && terraform ... init -backend-config=<gen>'` | Init providers + bind R2 backend         |
-| `make upgradeinit` | `infisical run -- /bin/sh -c 'render-tfbackend.sh && terraform ... init -upgrade -backend-config=<gen>'` | Upgrade providers / re-bind backend      |
-| `make plan`        | `infisical run -- terraform -chdir=infra/$(MOD) plan`                               | Preview changes                          |
-| `make apply`       | `infisical run -- terraform -chdir=infra/$(MOD) apply`                              | Apply changes                            |
-| `make destroy`     | `infisical run -- terraform -chdir=infra/$(MOD) destroy`                            | Tear down resources                      |
-| `make fmt`         | `terraform -chdir=infra/$(MOD) fmt`                                                 | Format all `.tf` files                   |
-| `make validate`    | `terraform -chdir=infra/$(MOD) validate`                                            | Validate configuration                   |
+| Target             | Command                                                                                                        | Description                              |
+| ------------------ | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `make init`        | `infisical run -- /bin/sh -c 'render-tfbackend.sh && terraform ... init -backend-config=<gen>'`                | Init providers + bind R2 backend         |
+| `make upgradeinit` | `infisical run -- /bin/sh -c 'render-tfbackend.sh && terraform ... init -upgrade -backend-config=<gen>'`       | Upgrade providers / re-bind backend      |
+| `make plan`        | `infisical run -- terraform -chdir=infra/$(MOD) plan`                                                          | Preview changes                          |
+| `make apply`       | `infisical run -- terraform -chdir=infra/$(MOD) apply`                                                         | Apply changes                            |
+| `make destroy`     | `infisical run -- terraform -chdir=infra/$(MOD) destroy`                                                       | Tear down resources                      |
+| `make fmt`         | `terraform -chdir=infra/$(MOD) fmt`                                                                            | Format all `.tf` files                   |
+| `make validate`    | `terraform -chdir=infra/$(MOD) validate`                                                                       | Validate configuration                   |
 | `make migrate`     | `infisical run -- /bin/sh -c 'render-tfbackend.sh && terraform ... init -migrate-state -backend-config=<gen>'` | One-time: push local state to R2         |
-| `make dump`        | `kubectl exec ... pg_dump \| gzip > ~/backups/`                                     | Backup diagramdb from local k3s postgres |
-| `make nuke-list`   | `infisical run -- aws-nuke -c nuke-config.yaml (dry-run)`                           | Dry-run aws-nuke sweep (deletes nothing) |
+| `make dump`        | `kubectl exec ... pg_dump \| gzip > ~/backups/`                                                                | Backup diagramdb from local k3s postgres |
+| `make nuke-list`   | `infisical run -- aws-nuke -c nuke-config.yaml (dry-run)`                                                      | Dry-run aws-nuke sweep (deletes nothing) |
 
 **Variables:**
 
-| Variable       | Default      | Description                                             |
-| -------------- | ------------ | ------------------------------------------------------- |
+| Variable       | Default      | Description                                                |
+| -------------- | ------------ | ---------------------------------------------------------- |
 | `MOD`          | (empty)      | Module subdirectory: `doks`, `k3s`, `aws`, or `cloudflare` |
-| `ENV`          | `dev`        | Infisical environment                                   |
-| `SECRETS_PATH` | `/terraform` | Infisical secrets path                                  |
+| `ENV`          | `dev`        | Infisical environment                                      |
+| `SECRETS_PATH` | `/terraform` | Infisical secrets path                                     |
 
 **Examples:**
 
@@ -191,6 +191,7 @@ make migrate MOD=k3s    # one-time local→R2 state copy
 ## Variables
 
 All Terraform input variables live in the module `variables.tf` files — `infra/doks/variables.tf`, `infra/k3s/variables.tf`, `infra/aws/variables.tf`, `infra/cloudflare/variables.tf` — and carry their own `sensitive = true` flags and `optional()` object schemas. Read the source for the authoritative type/required/default split.
+
 > Secrets are injected from Infisical (the `infisical run` wrapper in the Makefile) and mapped to Terraform input vars as `TF_VAR_*`. A `secrets.tfvars.example` template is kept for reference, but it is not the live secret source.
 
 ---
@@ -293,16 +294,17 @@ The `infra/cloudflare/` module (state #4) makes the tunnel-facing DNS records de
 
 Manages the **4 tunnel hostnames** on `seekeru.tech` (zone id `5a1a5f826d5a3398dc78ba360e24dfa0`):
 
-| Record | Type | Target | Proxied |
-| ------ | ---- | ------ | ------- |
-| `seekeru.tech` (apex) | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes |
-| `portfolio.seekeru.tech` | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes |
-| `diagram.seekeru.tech` | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes |
-| `max.seekeru.tech` | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes |
+| Record                   | Type  | Target                       | Proxied |
+| ------------------------ | ----- | ---------------------------- | ------- |
+| `seekeru.tech` (apex)    | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
+| `portfolio.seekeru.tech` | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
+| `diagram.seekeru.tech`   | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
+| `max.seekeru.tech`       | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
 
 These were imported into state first (adopt, don't overwrite) and are now tracked by Terraform.
 
 **Left in the dashboard** (out of TF scope, owned by other systems):
+
 - Clerk SaaS records (`accounts`, `clerk`, `clk._domainkey`, `clkmail` …)
 - AWS ALB `alb.seekeru.tech` + its ACM validation CNAME (owned by `infra/aws`)
 - Any future statically-addressed record
