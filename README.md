@@ -143,7 +143,7 @@ terraform/
 
 ## Makefile Workflow
 
-Module targets accept `MOD=doks`, `MOD=k3s`, `MOD=aws`, or `MOD=cloudflare`. The `infra/` prefix and Infisical secret flow are baked into each target. Sensitive vars (incl. the R2 credentials backing state) come from `infisical run`. Backend-facing targets (`init`, `upgradeinit`, `migrate`) exec terraform through `/bin/sh -c` so the `TF_VAR_R2_*` refs expand from infisical's injected env; plan/apply/destroy exec directly so the AWS provider sees native `AWS_*` creds. `nuke-list` is account-scoped (ignores `MOD`) and runs from the repo root.
+Module targets accept `MOD=doks`, `MOD=k3s`, `MOD=aws`, or `MOD=cloudflare`. The `infra/` prefix and Infisical secret flow are baked into each target. Sensitive vars (incl. the R2 credentials backing state) come from `infisical run`. Backend-facing targets (`init`, `upgradeinit`, `migrate`) exec terraform through `/bin/sh -c`, so the `$TF_VAR_R2_*` refs in `backend_config` are expanded by that shell from infisical's injected env (infisical itself execs directly and would pass them through unexpanded); plan/apply/destroy exec directly so the AWS provider sees native `AWS_*` creds. `nuke-list` is account-scoped (ignores `MOD`) and runs from the repo root.
 
 | Target             | Command                                                                             | Description                              |
 | ------------------ | ----------------------------------------------------------------------------------- | ---------------------------------------- |
