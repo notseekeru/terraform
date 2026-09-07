@@ -59,7 +59,7 @@ NUKE_CFG ?= nuke-config.yaml
 nuke-list:
 	@echo '== AWS-NUKE DRY RUN (nothing deleted) =='
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-		aws-nuke -c $(NUKE_CFG) --no-dry-run
+		aws-nuke -c $(NUKE_CFG)
 
 reconfigure:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
