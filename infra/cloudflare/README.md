@@ -18,10 +18,10 @@ Terraform** (config mirrors them in `variables.tf` → `records`):
 
 `terraform plan MOD=cloudflare` should report **No changes** against live DNS.
 
-**Out of scope (also in the dashboard, owned elsewhere — do not manage here):**
-Clerk SaaS records (`accounts`, `clerk`, `clk._domainkey`, `clkmail`, …), the
-AWS ALB `alb.seekeru.tech` and its ACM validation CNAME (managed by
-`infra/aws`).
+**Out of scope (not managed by this module — owned elsewhere):**
+Clerk SaaS records (`accounts`, `clerk`, `clk._domainkey`, `clkmail`, …), and the
+AWS ALB `alb.seekeru.tech` + its ACM validation CNAME, which live in the `infra/aws`
+module (it creates its own Cloudflare records via an aliased `cloudflare` provider).
 
 ## Credentials
 

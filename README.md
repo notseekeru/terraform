@@ -260,11 +260,13 @@ CloudFront via Origin Access Control (OAC). Alerting: a CloudWatch CPU alarm plu
 credit-cap budgets all publish to the SNS topic (`TF_VAR_ALERT_EMAIL` must confirm the subscription
 once).
 
-HTTPS is optional: set `alb_domain` (here `alb.seekeru.tech`) to get an ACM certificate, a :443
-listener, and an HTTP→HTTPS redirect. Add the returned `alb_domain_validation_cname` in Cloudflare
-to issue the cert. Note: the `alb.seekeru.tech` DNS record (ELB CNAME) and its ACM validation record
-live in the Cloudflare dashboard and are **deliberately outside** the `infra/cloudflare` module scope
-(they're owned by the AWS provisioning flow, not the tunnel). See `AWS.md` for the full architecture.
+HTTPS is optional: set `alb_domain` (here `alb.seekeru.tech`) and the cert issues fully
+automatically — `infra/aws` brings in an aliased `cloudflare` provider that creates the
+`alb.seekeru.tech` CNAME (tracking the real ALB DNS) plus the ACM validation CNAME from
+`aws_acm_certificate.domain_validation_options`, then `aws_acm_certificate_validation` poll
+until ISSUED before binding :443. No manual Cloudflare step; see `compute.tf`. The ALB DNS
+records are deliberately kept in `infra/aws` (not the `infra/cloudflare` module, which owns
+the tunnel hostnames) so each module is self-contained. See `AWS.md` for the full architecture.
 
 ### Deployment notes (verified)
 
