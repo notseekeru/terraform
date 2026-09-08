@@ -91,7 +91,7 @@ resource "kubernetes_stateful_set_v1" "postgres" {
         # Explicit fs_group/run_as_user caused chmod denial on local-path PV mounts.
         container {
           name              = "postgres"
-          image             = "postgres:16-alpine"
+          image             = "postgres:18-alpine"
           image_pull_policy = "IfNotPresent"
           port {
             container_port = 5432
