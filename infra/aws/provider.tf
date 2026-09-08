@@ -1,14 +1,17 @@
 provider "aws" {
   region = "ap-southeast-1"
 
-  # No endpoints.s3 override is needed here. The R2 remote-state endpoint is now
-  # supplied to the backend via the per-module backend.tfbackend.tpl (rendered
-  # at init into infra/aws/.terraform/backend.generated.tfbackend), so nothing
-  # injects AWS_ENDPOINT_URL_S3 into this provider's environment at plan/apply.
-  # Real aws_s3_bucket / aws_s3_bucket_policy calls therefore resolve to real AWS
-  # S3 by default. If you ever reintroduce an ambient R2 endpoint env var here,
-  # you must re-add an endpoints.s3 pin to real S3 (see
-  # docs/incident-2026-08-27-r2-backend-credential-conflict.md).
+  # The R2 state-backend endpoint is delivered via the ambient AWS_ENDPOINT_URL_S3
+  # env var, which the s3 backend needs present on EVERY run (init AND plan/apply) to
+  # reach R2 for remote state. That same var would otherwise ALSO route
+  # aws_s3_bucket/aws_s3_bucket_policy calls to R2 (which rejects real AWS AKIA keys:
+  # 'access key has length 20, should be 32'). This pin is therefore the SOLE thing
+  # that keeps real bucket resources pointed at AWS while the endpoint var is present.
+  # Do not `unset AWS_ENDPOINT_URL_S3` around plan/apply/refresh/destroy — that would
+  # starve the backend's own R2 connection (s3 backend would fall back to AWS S3 DNS).
+  endpoints {
+    s3 = "https://s3.ap-southeast-1.amazonaws.com"
+  }
 
   # Standard tags for cost tracking and identification
   default_tags {

@@ -3,13 +3,14 @@
 > Root-cause note for the `InvalidAccessKeyId` / "value cannot be empty" failures
 > on `init`/`plan`. Config-change bug, no deployment or data impact. **This is a
 > historical record.** The standing pattern has since evolved (2026-09): the R2
-> endpoint is no longer injected as an ambient `AWS_ENDPOINT_URL_S3` — it is
-> rendered into a per-module `backend.tfbackend.tpl` at init by
-> `scripts/render-tfbackend.sh`, so no `AWS_*`/endpoint env leaks to the AWS
-> provider. The stale `AWS_ENDPOINT_URL_S3` Infisical secret was **removed**, and
-> the Makefile `plan`/`apply`/`destroy` targets `unset` it defensively as well.
-> See root `README.md`/`Makefile` for the current mechanism; details below
-> describe *what was true at incident time* and why the split matters.
+> backend creds are namespaced `TF_VAR_R2_*` so they never shadow the AWS provider's
+> native `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, and the R2 endpoint is the
+> ambient `AWS_ENDPOINT_URL_S3`, present on every terraform run (the s3 backend
+> needs it to reach R2 for remote state). Because that endpoint var is also read by
+> the AWS provider, `provider.tf` pins `endpoints.s3` to real AWS S3 — and the R2
+> creds must never be placed under a bare `AWS_*` name. See root `README.md`/`Makefile`
+> and `ADR 0001` for the current mechanism; details below describe *what was true at
+> incident time* and why the namespace split matters.
 
 ## Summary
 
