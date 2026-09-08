@@ -1,110 +1,85 @@
 # Terraform — Personal Cloud Infrastructure
 
-> Infrastructure-as-Code for my personal cloud environment.  
+> Infrastructure-as-Code for my personal cloud environment.
 > **Providers:** DigitalOcean / Cloudflare (R2 + DNS) / AWS · **Provisioner:** Terraform · **Orchestrator:** ArgoCD
-> **AI usage is encouraged.** This repo is designed to be AI-friendly: ask an agent to explain, plan, audit, or change infrastructure. Architecture always ends with **a human owner in the loop** — no change is applied without human review of a `plan`. AI is an helper not a dependancy.
+> **AI usage is encouraged** — ask an agent to explain, audit, or change infra. Every change still ends with a human-reviewed `plan`; AI is a helper, not a dependency.
 
 ---
 
 ## Prerequisites
 
-| Requirement            | Details                                                                                            |
-| ---------------------- | -------------------------------------------------------------------------------------------------- |
-| **Terraform**          | `>= 1.0` ([install guide](https://developer.hashicorp.com/terraform/install))                      |
-| **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — needed only for `doks`                            |
-| **Cloudflare token**   | API token with `Zone → DNS → Edit` (`TF_VAR_CLOUDFLARE_API_TOKEN`) — needed by `cloudflare` module |
-| **k3s**                | An existing k3s cluster with `~/.kube/config` — see [K3s Module](#k3s-module-local)                |
-| **Make**               | (Optional) `make` for the workflow targets below                                                   |
-| **Nix**                | (Optional) `nix develop` for an isolated dev shell — see [Nix Dev Shell](#nix-dev-shell)           |
-| **direnv**             | (Optional) Auto-loads the Nix shell, pulls latest, and exports `KUBECONFIG` on `cd`                |
+| Requirement            | Details                                                                                  |
+| ---------------------- | ---------------------------------------------------------------------------------------- |
+| **Terraform**          | `>= 1.0` ([install](https://developer.hashicorp.com/terraform/install))                   |
+| **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — only for `doks`                          |
+| **Cloudflare token**   | API token `Zone → DNS → Edit` (`TF_VAR_CLOUDFLARE_API_TOKEN`) — for `cloudflare` module |
+| **k3s**                | Existing k3s cluster with `~/.kube/config` — see [K3s Module](#k3s-module-local)          |
+| **Nix / direnv**       | Optional: `nix develop` shell; `direnv` auto-loads it, pulls, exports `KUBECONFIG`        |
+
+`make` is optional (workflow targets). Secrets are not shipped in the repo — see [Fresh clone](#fresh-clone-on-a-new-device).
 
 ---
 
-## State Management
+## Remote state (R2) & locking
 
-State lives in a **Cloudflare R2 bucket** (`s3` backend, S3-compatible) with a per-module key — no committed local `terraform.tfstate`.
+State lives in a **Cloudflare R2 bucket** (`s3` backend) under a per-module key — no committed local state.
 
-| Module       | State key                                | Backend |
-| ------------ | ---------------------------------------- | ------- |
-| `doks`       | `terraform/doks/terraform.tfstate`       | s3      |
-| `k3s`        | `terraform/k3s/terraform.tfstate`        | s3      |
-| `aws`        | `terraform/aws/terraform.tfstate`        | s3      |
-| `cloudflare` | `terraform/cloudflare/terraform.tfstate` | s3      |
+| Module       | State key                                  | Backend |
+| ------------ | ------------------------------------------ | ------- |
+| `doks`       | `terraform/doks/terraform.tfstate`         | s3      |
+| `k3s`        | `terraform/k3s/terraform.tfstate`          | s3      |
+| `aws`        | `terraform/aws/terraform.tfstate`          | s3      |
+| `cloudflare` | `terraform/cloudflare/terraform.tfstate`   | s3      |
 
-**First-time / after backend change** — push local state up (per module):
+**How the R2 endpoint is delivered (read once):** the s3 backend and the AWS provider both read the ambient `AWS_*` namespace, so they must be kept from colliding:
 
-```bash
-make migrate MOD=k3s    # type "yes" to copy local state into R2
-```
+- R2 creds stay namespaced `TF_VAR_R2_*` (`TF_VAR_R2_BUCKET`, `..._ACCESS_KEY_ID`, `..._SECRET_ACCESS_KEY`); AWS creds stay `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`. Never use a bare `AWS_*` name for R2 creds.
+- The **R2 endpoint** is the ambient `AWS_ENDPOINT_URL_S3`, present on **every** run because the s3 backend needs it to reach R2 (init **and** plan/apply/refresh/destroy). Same var on a fresh box: set it to `https://<account>.r2.cloudflarestorage.com`.
+- Because that var is also read by the AWS provider, `infra/aws/provider.tf` pins `endpoints { s3 = "https://s3.ap-southeast-1.amazonaws.com" }`. That pin — not an env `unset` — keeps real `aws_s3_bucket*` calls in AWS.
 
-Backend config lives inline in each module's `versions.tf` `backend "s3"` block (the `skip_*`/`use_lockfile` flags). The R2 bucket/key/region and the two R2 secret creds are supplied at `init` by `-backend-config` flags in the Makefile, expanding from infisical-injected `TF_VAR_R2_*`. The R2 endpoint is delivered via the ambient `AWS_ENDPOINT_URL_S3`, which is present on **every** terraform run — the s3 backend needs it to reach R2. Terraform maps that var natively to the backend's `endpoints.s3` (the non-deprecated replacement for the removed `endpoint` backend key). No template, no render script, no generated file. Because that ambient var is also read by the AWS provider, the `aws` module's `provider.tf` pins `endpoints { s3 = "https://s3.ap-southeast-1.amazonaws.com" }` — that pin is what keeps real `aws_s3_bucket*` calls in AWS. Do **not** `unset AWS_ENDPOINT_URL_S3` around plan/apply/refresh/destroy: doing so starves the backend's own R2 connection. The R2 creds stay namespaced `TF_VAR_R2_*` so they never collide with the AWS provider's native `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` (see `docs/incident-2026-08-27-r2-backend-credential-conflict.md`). After `init`, the binding is cached in `infra/<MOD>/.terraform/`. For the _why_ behind the ambient-var + pin design, see **ADR 0001** (`docs/adr/0001-r2-endpoint-ambient-env-provider-pin.md`). Local `infra/<MOD>/terraform.tfstate*` files are gitignored; after migration, primary state lives in R2 only.
+> **Do not** `unset AWS_ENDPOINT_URL_S3` around plan/apply/refresh/destroy — that starves the backend's own R2 connection. Removing or weakening the `aws` provider pin routes AWS bucket calls to R2 (`access key has length 20, should be 32`). Full rationale + history: **ADR 0001** (`docs/adr/0001-r2-endpoint-ambient-env-provider-pin.md`).
 
-## Locking
+Backend settings live inline in each module's `versions.tf` `backend "s3"` block. Static fields (`skip_*`, `use_lockfile`, region) are inline; `bucket`/`key` and the two R2 creds come from `-backend-config` flags in the Makefile (init targets run via `/bin/sh -c` so `$TF_VAR_R2_*` expands). After `init`, the binding caches in `infra/<MOD>/.terraform/`. First-time push of pre-existing local state: `make migrate MOD=<m>`.
 
-Set per module via `use_lockfile = true` in each module's `versions.tf` `backend "s3"` block. R2 has no DynamoDB service, so only the S3-native lockfile (`<key>.tflock`, conditional `PutObject`) is viable — the `dynamodb_table` path can't be used. Verified working on this R2 bucket (2026-09-06, `aws` module): a concurrent `plan -lock-timeout=5s` failed with `Error acquiring the state lock` / HTTP `412 PreconditionFailed`. All four modules share the one `terraform-state` bucket, so one test covers them. Locking guards only concurrent Terraform runs on the **same** module's state — it does **not** stop out-of-band destructive changes (`make nuke-list`, console edits, `aws-nuke`).
+### Operating rules
 
-**Gotchas**
+When no CI stage runs and only `make apply` gates concurrency, follow these:
 
-1. **`plan` locks too** — a read-only `plan` holds the state lock through refresh+plan. Two parallel `plan`s serialize; the second waits up to `-lock-timeout`, then errors.
-2. **Per-module locks** — state keys differ, so applies on _different_ modules are not mutually blocked (`aws` && `k3s` can run together); only two runs of the _same_ module serialize.
-3. **R2-scoped verification** — the 412 enforcement is store-specific; re-test if the backend ever moves to MinIO/local S3.
-4. **Stale lock blocks all runs** — after a crash, later runs fail until the lease expires or you `terraform force-unlock <LOCK_ID>` (ID is in the error). `-lock=false` is an emergency bypass only.
-5. **No CI serialization** — dispatch is manual `make apply`; locking is the only guard. Follow the operating rules below.
-
-**Clearing a stale lock:**
-
-```bash
-# OFFICIAL ONLY if you are certain no apply is live: the lock ID comes from the error
-# infisical run --path /terraform --env dev -- \
-#   terraform -chdir=infra/aws force-unlock <LOCK_ID>
-```
-
-**Operating rules**
-
-- One `apply`/`destroy` per module at a time (different modules in parallel are fine).
-- Run with `-lock-timeout=30s` so a contended/stale lock fails fast with a clear message instead of hanging.
+- One `apply`/`destroy` per module at a time. Different modules can run in parallel (state keys differ; locks are per-module).
+- Run with `-lock-timeout=30s` so a contended/stale lock fails fast instead of hanging.
+- A read-only `plan` also holds the state lock through refresh+plan; two parallel `plan`s serialize.
+- `use_lockfile = true` guards **same-module** Terraform runs only — it does not stop out-of-band destructive changes (`aws-nuke`, console edits). Tests on the shared bucket verified the S3-native lock (`412 PreconditionFailed`); re-test if the backend ever moves off R2.
+- Stale lock after a crash: run `terraform force-unlock <LOCK_ID>` (the ID is in the error) once you're sure no apply is live. `-lock=false` is an emergency bypass only.
 
 ## No CI/CD is deliberate
 
-This is a **single-owner sandbox**: applies are human-gated (`make apply` prompts; the workflow requires a human-reviewed `plan`), and the R2 `use_lockfile` guard already serializes concurrent applies of the same module. Adding a plan→approve→apply pipeline now would add a runner, a CI credential surface, and deploy latency for zero extra safety.
-
-Re-introduce orchestration **only if** a second person/machine needs `apply` access, or you need non-interactive reviewed deploys — then escalate: (1) a single centralized apply path, (2) Atlantis/Spacelift/Terraform Cloud for PR-driven apply/policy/audit.
-
-> Full rationale, trade-offs, and deciding triggers: **ADR 0002** (`docs/adr/0002-no-cicd-manual-human-gated-applies.md`).
+Single-owner sandbox: applies are human-gated via `make apply` (reviewed `plan` first) and the R2 lock serializes same-module runs. A plan→approve→apply pipeline now would add a runner and a CI credential surface for zero extra safety. Add orchestration only if a second person/machine needs `apply`, or you need non-interactive reviewed deploys. Full rationale, trade-offs, and the escalation ladder: **ADR 0002** (`docs/adr/0002-no-cicd-manual-human-gated-applies.md`).
 
 ---
 
 ## Quickstart
 
 ```bash
-# 1. Clone & enter
 cd terraform
 
-# 2. Secrets come from Infisical (see .envrc / SECRETS_PATH=... in the Makefile).
-#    There is no secrets.tfvars-driven flow — all tfvars-style inputs flow via infisical run.
-
-# 3. Initialize a module (doks, k3s, aws, or cloudflare) — pulls providers + binds R2 backend
-#    If you need k3s then you need to install k3s software
-make init MOD=k3s
-
-# 4. Preview
-make plan MOD=k3s
-
-# 5. Apply
-make apply MOD=k3s
+# Secrets come from Infisical (direnv/.envrc wires the shell; there is no secrets.tfvars flow).
+#   -- If you use k3s, install k3s first.
+make init MOD=k3s    # init providers + bind R2 backend
+make plan MOD=k3s    # preview
+make apply MOD=k3s   # apply
 ```
 
 ### Fresh clone on a new device
 
-The repo is **operator-reproducible, not fresh-clone-self-contained**. Before `make init`/`plan` works, on a new machine you need (none of it ships in this repo, by design):
+The repo is operator-reproducible, not fresh-clone-self-contained. Before init/plan works on a new machine (none of this ships in the repo, by design):
 
-1. **Infisical identity** — copy `~/.config/infisical/` from an existing device (or `infisical login`), plus this workspace's local `.infisical.json` (`/terraform` dev).
-2. **Secrets populated** — the Infisical project must hold all `TF_VAR_*`/`AWS_*` the module needs (see each `variables.tf` + the `Makefile` targets), including the R2 set: `TF_VAR_R2_BUCKET`, `TF_VAR_R2_ACCESS_KEY_ID`, `TF_VAR_R2_SECRET_ACCESS_KEY`, plus the ambient `AWS_ENDPOINT_URL_S3` (= the `https://<account>.r2.cloudflarestorage.com` endpoint) that the backend reads at init-time. Only the cred secrets are sensitive; the endpoint URL is a plain (account-specific) config var.
-3. **R2 state bucket live** — creds in Infisical must still point at the existing `terraform-state` bucket (state stays in R2, not the repo).
-4. **`gitops/` repo checked out at `../gitops/`** — `doks`/`k3s` read `app.yaml` via `file()` at apply time, so a missing path fails the ArgoCD-manifest step.
-5. **ArgoCD/GHCR repos reachable** — the PAT in Infisical must still be valid for the private `gitops` repo.
+1. **Infisical identity** — copy `~/.config/infisical/` from a working device (or `infisical login`) plus this workspace's `.infisical.json` (`/terraform` dev).
+2. **Secrets populated** — the Infisical project must hold the `TF_VAR_*`/`AWS_*` vars each module's `variables.tf` needs, incl. the R2 set (`TF_VAR_R2_*`) and ambient `AWS_ENDPOINT_URL_S3`.
+3. **R2 state bucket live** — creds must still point at the existing `terraform-state` bucket.
+4. **`gitops/` repo checked out at `../gitops/`** — `doks`/`k3s` read `app.yaml` via `file()` at apply time.
+5. **ArgoCD/GHCR reachable** — the PAT in Infisical must still be valid for the private `gitops` repo.
 
-Then: `make init MOD=<m>` binds R2 and re-fetches providers. Note `.terraform.lock.hcl` is gitignored, so first `init` on a new machine re-resolves provider versions against the `~>` floors (a minor drift vector, not a blocker), and `.gitignore` also drops any local `*.tfstate`.
+Then `make init MOD=<m>` re-fetches providers. `.terraform.lock.hcl` and local `*.tfstate` are gitignored, so first init on a machine re-resolves against `~>` floors (a minor drift vector).
 
 ---
 
@@ -114,267 +89,151 @@ Then: `make init MOD=<m>` binds R2 and re-fetches providers. Note `.terraform.lo
 terraform/
 ├── infra/                   # Terraform root modules
 │   ├── doks/                #   state #1 — DOKS cluster (cloud)
-│   │   ├── versions.tf      #   DO, helm, k8s, kubectl, local
-│   │   ├── provider.tf      #   DO + dynamic k8s/helm/kubectl providers
-│   │   ├── variables.tf     #   DO_TOKEN, CLOUDFLARE_TOKEN, GITHUB_*, DIAGRAM_API_KEY
-│   │   └── main.tf          #   cluster → managed PG → helm releases → secrets → argocd app
 │   ├── k3s/                 #   state #2 — local k3s cluster (no DO)
-│   │   ├── versions.tf      #   helm, k8s, kubectl only
-│   │   ├── provider.tf      #   providers read from ~/.kube/config
-│   │   ├── variables.tf     #   CLOUDFLARE_TOKEN, GITHUB_*, DIAGRAM_API_KEY, POSTGRES_PASSWORD
-│   │   └── main.tf          #   helm releases → self-hosted PG StatefulSet → secrets → argocd app
-│   ├── aws/                 #   state #3 — AWS sandbox (S3, RDS, VPC, ASG, CloudFront)
-│   │   ├── versions.tf      #   aws + aliased cloudflare providers + s3(R2) backend
-│   │   ├── provider.tf      #   aws provider, region + default tags
-│   │   ├── variables.tf     #   instance classes, POSTGRES_PASSWORD, ALERT_EMAIL
-│   │   ├── vpc.tf           #   VPC, subnets, route tables, IGW
-│   │   ├── compute.tf       #   launch template, ASG, ALB
-│   │   ├── storage.tf       #   S3 bucket + CloudFront (OAC)
-│   │   ├── database.tf      #   RDS PostgreSQL
-│   │   ├── security.tf      #   security groups + IAM
-│   │   ├── monitoring.tf    #   CloudWatch alarms + budget
-│   │   ├── secrets.tf       #   SSM parameters
-│   │   └── outputs.tf       #   ALB DNS + CloudFront domain
+│   ├── aws/                 #   state #3 — AWS sandbox (see AWS.md)
 │   └── cloudflare/          #   state #4 — Cloudflare DNS + zone settings
-│       ├── versions.tf      #   cloudflare provider (~>5) + s3(R2) backend
-│       ├── provider.tf      #   cloudflare provider (api_token)
-│       ├── variables.tf     #   zones, records, zone_settings overrides
-│       ├── main.tf          #   cloudflare_dns_record per declared record
-│       └── README.md        #   import-first adoption runbook
-├── secrets.tfvars           # Legacy gitignored file (not the live secret source)
-├── Makefile                 # Workflow shortcuts (accepts MOD=, ENV=, SECRETS_PATH=)
+├── Makefile                 # Workflow targets (accepts MOD=, ENV=, SECRETS_PATH=)
 ├── flake.nix                # Nix dev shell definition
 ├── .envrc                   # direnv: auto-nix + git pull + KUBECONFIG
+├── secrets.tfvars.example   # Dummy/empty template for reference only (gitignored live file: secrets.tfvars)
+└── docs/                    # ADRs + incident runbooks
 ```
+
+Each module keeps its own `versions.tf`, `provider.tf`, `variables.tf`, `main.tf`, and split resource files (e.g. `infra/aws/{vpc,compute,storage,database,security,monitoring,secrets,outputs}.tf`). `infra/cloudflare/README.md` is the import-first adoption runbook. Full architecture: `AWS.md`.
 
 ---
 
 ## Makefile Workflow
 
-Module targets accept `MOD=doks`, `MOD=k3s`, `MOD=aws`, or `MOD=cloudflare`. The `infra/` prefix and Infisical secret flow are baked into each target. Sensitive vars (incl. the R2 creds backing state) come from `infisical run`. Backend-facing targets (`init`, `upgradeinit`, `reconfigure`, `migrate`) pass `backend_config` flags through `/bin/sh -c` so the `$TF_VAR_R2_BUCKET`/`$TF_VAR_R2_ACCESS_KEY_ID`/`$TF_VAR_R2_SECRET_ACCESS_KEY` refs expand from infisical's injected env (infisical itself execs directly and would pass them through unexpanded). The R2 endpoint is the ambient `AWS_ENDPOINT_URL_S3`, which stays present for **all** targets (backend needs it each run). plan/apply/refresh/destroy run directly. Because the endpoint var is present for the `aws` provider too, `infra/aws/provider.tf` pins `endpoints.s3` to real AWS S3 — that pin is the safeguard, not an env `unset`. `nuke-list` is account-scoped (ignores `MOD`) and runs from the repo root.
+Module targets take `MOD=doks|k3s|aws|cloudflare`; the `infra/` prefix and Infisical flow are baked in. Backend-facing targets (`init`, `upgradeinit`, `reconfigure`, `migrate`) pass `backend_config` through `/bin/sh -c` so the `$TF_VAR_R2_*` refs expand (Infisical execs directly and wouldn't expand them). The R2 endpoint is the ambient `AWS_ENDPOINT_URL_S3` present on all targets. Backend/`aws`-provider separation is handled by the provider pin — not an env `unset`. `nuke-list` is account-scoped (ignores `MOD`) and runs from the repo root.
 
-| Target             | Command                                                                                                        | Description                              |
-| ------------------ | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| `make init`        | `infisical run -- /bin/sh -c 'terraform ... init $(backend_config)'`        | Init providers + bind R2 backend         |
-| `make upgradeinit` | `infisical run -- /bin/sh -c 'terraform ... init -upgrade $(backend_config)'` | Upgrade providers / re-bind backend      |
-| `make plan`        | `infisical run -- terraform ... plan`                                | Preview changes                          |
-| `make apply`       | `infisical run -- terraform ... apply`                               | Apply changes                            |
-| `make destroy`     | `infisical run -- terraform ... destroy`                             | Tear down resources                      |
-| `make fmt`         | `terraform -chdir=infra/$(MOD) fmt`                                                                            | Format all `.tf` files                   |
-| `make validate`    | `terraform -chdir=infra/$(MOD) validate`                                                                       | Validate configuration                   |
-| `make migrate`     | `infisical run -- /bin/sh -c 'terraform ... init -migrate-state $(backend_config)'` | One-time: push local state to R2         |
-| `make dump`        | `kubectl exec ... pg_dump \| gzip > ~/backups/`                                                                | Backup diagramdb from local k3s postgres |
-| `make nuke-list`   | `infisical run -- aws-nuke -c nuke-config.yaml (dry-run)`                                                      | Dry-run aws-nuke sweep (deletes nothing) |
+| Target             | Description                                                              |
+| ------------------ | ------------------------------------------------------------------------ |
+| `make init`        | Init providers + bind R2 backend                                        |
+| `make upgradeinit` | Upgrade providers / re-bind backend (`-upgrade`)                        |
+| `make plan`        | Preview changes |
+| `make apply`       | Apply changes |
+| `make destroy`     | Tear down resources |
+| `make fmt`         | Format `.tf` files |
+| `make validate`    | Validate module |
+| `make migrate`     | One-time push of local state to R2 (`init -migrate-state`)  |
+| `make dump`        | Dump `diagramdb` from local k3s postgres → `~/backups/` |
+| `make nuke-list`   | **Dry-run** aws-nuke sweep — deletes nothing |
 
-**Variables:**
-
-| Variable       | Default      | Description                                                |
-| -------------- | ------------ | ---------------------------------------------------------- |
-| `MOD`          | (empty)      | Module subdirectory: `doks`, `k3s`, `aws`, or `cloudflare` |
-| `ENV`          | `dev`        | Infisical environment                                      |
-| `SECRETS_PATH` | `/terraform` | Infisical secrets path                                     |
-
-**Examples:**
+**Variables:** `MOD` (slugs above), `ENV` (default `dev`), `SECRETS_PATH` (default `/terraform`).
 
 ```bash
-make init MOD=k3s       # first time for a module
-make plan MOD=k3s       # preview
-make apply MOD=k3s      # apply
-make plan MOD=doks      # another module
-make plan MOD=cloudflare # preview cloudflare DNS changes
-make apply MOD=cloudflare # apply cloudflare DNS changes
+make init MOD=k3s && make plan MOD=k3s && make apply MOD=k3s
+make plan MOD=cloudflare && make apply MOD=cloudflare
 make migrate MOD=k3s    # one-time local→R2 state copy
 ```
 
----
-
-## Variables
-
-All Terraform input variables live in the module `variables.tf` files — `infra/doks/variables.tf`, `infra/k3s/variables.tf`, `infra/aws/variables.tf`, `infra/cloudflare/variables.tf` — and carry their own `sensitive = true` flags and `optional()` object schemas. Read the source for the authoritative type/required/default split.
-
-> Secrets are injected from Infisical (the `infisical run` wrapper in the Makefile) and mapped to Terraform input vars as `TF_VAR_*`. A `secrets.tfvars.example` template is kept for reference, but it is not the live secret source.
-
----
-
 ## DOKS Cluster (Cloud)
 
-| Attribute     | Value                | Notes                        |
-| ------------- | -------------------- | ---------------------------- |
-| **Name**      | `lab-cluster`        | Singleton — one cluster only |
-| **Region**    | `var.default_region` | Inherits `sgp1` default      |
-| **Version**   | `1.34.8-do.2`        | DO-managed Kubernetes        |
-| **Node pool** | 3 × `s-2vcpu-2gb`    | Worker-pool, 6 GB total      |
+| Attribute     | Value                | Notes                   |
+| ------------- | -------------------- | ----------------------- |
+| **Name**      | `lab-cluster`        | Singleton — one cluster |
+| **Region**    | `var.default_region` | Inherits `sgp1` default |
+| **Version**   | `1.34.8-do.2`        | DO-managed K8s          |
+| **Node pool** | 3 × `s-2vcpu-2gb`    | 6 GB total              |
 
-### Usage
-
-The kubeconfig is written to `~/kubeconfig` at apply time:
+kubeconfig is written to `~/kubeconfig` at apply time:
 
 ```bash
-export KUBECONFIG=~/kubeconfig
-kubectl get nodes
+export KUBECONFIG=~/kubeconfig && kubectl get nodes
 ```
 
-### Database
-
-A DigitalOcean managed PostgreSQL 16 (`db-s-1vcpu-1gb`) is provisioned in the same VPC as the cluster. Credentials injected into `diagram-secrets` with `sslmode=no-verify` for private VPC connectivity.
-
----
+A DO managed PostgreSQL 16 (`db-s-1vcpu-1gb`) lives in the cluster VPC; creds go into `diagram-secrets` with `sslmode=no-verify` for private connectivity.
 
 ## K3s Module (Local)
 
-For local development or edge deployments. Runs against an existing k3s cluster — reads `~/.kube/config` directly.
+For local/edge dev. Runs against an existing k3s cluster via `~/.kube/config`.
 
-| Aspect                | Detail                                                                                               |
-| --------------------- | ---------------------------------------------------------------------------------------------------- |
-| **No DO dependency**  | All providers point at local kubeconfig                                                              |
-| **Database**          | Self-hosted PostgreSQL 16 StatefulSet in `database` namespace, 5Gi PVC on `local-path` storage class |
-| **Connection string** | `postgresql://diagram:${pass}@postgres.database.svc.cluster.local:5432/diagramdb`                    |
-
-### Init & Apply
+| Aspect                | Detail                                             |
+| --------------------- | -------------------------------------------------- |
+| **No DO dependency**  | Providers read local kubeconfig                    |
+| **Database**          | Self-hosted PG 16 StatefulSet, `database` ns, 5Gi PVC on `local-path` |
+| **Connection string** | `postgresql://diagram:${pass}@postgres.database.svc.cluster.local:5432/diagramdb` |
 
 ```bash
-make init MOD=k3s
-make plan MOD=k3s
-make apply MOD=k3s
+make init MOD=k3s && make plan MOD=k3s && make apply MOD=k3s
 ```
 
-Requires Infisical secrets populated with `POSTGRES_PASSWORD`, `CLOUDFLARE_TOKEN`, `GITHUB_PAT`, and `DIAGRAM_API_KEY`.
-
-### DB backup
-
-Before any destructive operation (`make destroy MOD=k3s`), dump the database:
+Needs Infisical secrets: `POSTGRES_PASSWORD`, `CLOUDFLARE_TOKEN`, `GITHUB_PAT`, `DIAGRAM_API_KEY`. Back up the DB before `destroy`:
 
 ```bash
 make dump   # → ~/backups/diagramdb-<timestamp>.sql.gz
 ```
 
----
-
 ## AWS Module (Cloud)
 
-An AWS sandbox architecture (`infra/aws/`, state #3): VPC, public subnets, auto-scaling EC2 web
-tier behind an Application Load Balancer, private single-AZ RDS PostgreSQL, and an S3 bucket
-served via CloudFront. Provisioning targets a real AWS account; state still lives in R2.
+`infra/aws/` (state #3) is an AWS sandbox: VPC + public subnets, an auto-scaling EC2 web tier behind an ALB, single-AZ RDS PostgreSQL, and a private S3 bucket served via CloudFront (OAC). State still lives in R2.
 
-### Credentials required
+**Credentials** (Infisical): `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `TF_VAR_ALERT_EMAIL`, and the `TF_VAR_R2_*` backend pair.
 
-Requires Infisical secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (AWS account),
+Notable wiring:
+- **ALB** (CPU target-tracking ASG) with ELB health checks; **S3+CloudFront** for static assets; **CloudWatch** CPU alarm + zero-spend/credit-cap budgets → SNS (`TF_VAR_ALERT_EMAIL`; confirm the subscription once).
+- **HTTPS is optional & automatic** — set `alb_domain` (here `alb.seekeru.tech`): the module's aliased `cloudflare` provider creates the `alb.*` CNAME + ACM validation CNAME, and `aws_acm_certificate_validation` waits until ISSUED before binding :443. No dashboard step. ALB records are deliberately kept in `infra/aws` (not `infra/cloudflare`) so each module is self-contained.
+- **DB user:** `dbadmin` (PG reserves `admin`).
 
-`TF_VAR_ALERT_EMAIL` (SNS alert email), and the `TF_VAR_R2_*` backend pair.
-
-Web tier: EC2 instances in an Auto Scaling Group (target-tracking on CPU) registered to an
-Application Load Balancer with ELB health checks. Static assets: private S3 bucket served through
-CloudFront via Origin Access Control (OAC). Alerting: a CloudWatch CPU alarm plus zero-spend and
-credit-cap budgets all publish to the SNS topic (`TF_VAR_ALERT_EMAIL` must confirm the subscription
-once).
-
-HTTPS is optional: set `alb_domain` (here `alb.seekeru.tech`) and the cert issues fully
-automatically — `infra/aws` brings in an aliased `cloudflare` provider that creates the
-`alb.seekeru.tech` CNAME (tracking the real ALB DNS) plus the ACM validation CNAME from
-`aws_acm_certificate.domain_validation_options`, then `aws_acm_certificate_validation` poll
-until ISSUED before binding :443. No manual Cloudflare step; see `compute.tf`. The ALB DNS
-records are deliberately kept in `infra/aws` (not the `infra/cloudflare` module, which owns
-the tunnel hostnames) so each module is self-contained. See `AWS.md` for the full architecture.
-
-### Deployment notes (verified)
-
-- **Live endpoints:** `https://alb.seekeru.tech` (200, nginx) · `http://alb.seekeru.tech` (301 → HTTPS) · CloudFront `https://d14f3y8b1rk8te.cloudfront.net`.
-- **Provider vs. R2 endpoint:** the R2 remote-state endpoint is the ambient `AWS_ENDPOINT_URL_S3`, present for **all** targets because the s3 backend needs it to reach R2. That same var would otherwise also route AWS provider `aws_s3_bucket`/`aws_s3_bucket_policy` calls to R2 (the `access key has length 20` bug). The safeguard is the `endpoints { s3 = "https://s3.ap-southeast-1.amazonaws.com" }` pin in the `aws` module's `provider.tf` — keep it. Do **not** `unset AWS_ENDPOINT_URL_S3` around plan/apply/refresh/destroy (that starves the backend), and do not point that var at anything but the real R2 endpoint.
-- **DB user:** `dbadmin` (PostgreSQL reserves `admin`).
-- **Apply is non-interactive:** `make apply MOD=aws` prompts; use `terraform -chdir=infra/aws apply -auto-approve` (or pipe) for headless runs.
-- **Upgrade + revalidation matrix:** see `AWS.md` §8 for ranked upgrade paths and the drift-check commands.
-
----
+> Deployment notes, verified endpoints, the R2/AWS provider endpoint split, upgrade paths & revalidation: see **`AWS.md`**.
 
 ## Cloudflare Module (DNS)
 
-The `infra/cloudflare/` module (state #4) makes the tunnel-facing DNS records declarative so you do not need the Cloudflare dashboard for them. Provider: `cloudflare/cloudflare ~> 5.0`; state lives in R2 like every other module.
+`infra/cloudflare/` (state #4) makes tunnel-facing DNS declarative. Provider `cloudflare ~> 5.0`; state in R2.
 
-### Scope
+**Scope** — the 4 tunnel hostnames on `seekeru.tech` (managed declaratively):
 
-Manages the **4 tunnel hostnames** on `seekeru.tech` (zone id `5a1a5f826d5a3398dc78ba360e24dfa0`):
+| Record                   | Type  | Target                    | Proxied |
+| ------------------------ | ----- | ------------------------- | ------- |
+| `seekeru.tech` (apex)    | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes   |
+| `portfolio.seekeru.tech` | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes   |
+| `diagram.seekeru.tech`   | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes   |
+| `max.seekeru.tech`       | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes   |
 
-| Record                   | Type  | Target                       | Proxied |
-| ------------------------ | ----- | ---------------------------- | ------- |
-| `seekeru.tech` (apex)    | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
-| `portfolio.seekeru.tech` | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
-| `diagram.seekeru.tech`   | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
-| `max.seekeru.tech`       | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
+Imported into state first (adopt, don't overwrite), now tracked by Terraform.
 
-These were imported into state first (adopt, don't overwrite) and are now tracked by Terraform.
+**Left in the dashboard / owned elsewhere:** Clerk SaaS records (`accounts`, `clerk`, `clk._domainkey`, `clkmail`…), and the AWS ALB `alb.seekeru.tech` + ACM validation CNAME (owned by `infra/aws`), and any future statically-addressed record.
 
-**Left in the dashboard** (out of TF scope, owned by other systems):
-
-- Clerk SaaS records (`accounts`, `clerk`, `clk._domainkey`, `clkmail` …)
-- AWS ALB `alb.seekeru.tech` + its ACM validation CNAME (owned by `infra/aws`)
-- Any future statically-addressed record
-
-### Credentials
-
-Needs `TF_VAR_CLOUDFLARE_API_TOKEN` (a `cfat_…` API token with `Zone → DNS → Edit`; account-wide is acceptable here). `TF_VAR_CLOUDFLARE_ACCOUNT_ID` is also stored in Infisical but is not consumed by the DNS-only provider path. Both are injected via Infisical — never committed.
-
-### Workflow
-
-```bash
-make init MOD=cloudflare
-make plan MOD=cloudflare   # propose DNS changes
-make apply MOD=cloudflare  # apply the diff
-```
-
-To add a hostname, drop a map entry under `records` in `infra/cloudflare/variables.tf`, then `plan`/`apply`. To remove one you no longer run (e.g. a dead tunnel host), delete the map entry — Terraform will delete the record. See `infra/cloudflare/README.md` for the full adoption runbook and how to `terraform import` future records that were created dashboard-side.
+**Workflow** — edit the `records` map in `infra/cloudflare/variables.tf`, then plan/apply. To adopt a dashboard-created record, import it before config lands or apply will duplicate it — see `infra/cloudflare/README.md` for the full runbook + `terraform import`.
 
 ## ArgoCD
 
-Installed via the `argoproj/argo-helm` chart at version `7.7.0` in the `argocd` namespace, alongside Kubernetes secrets and a root Application CR.
+Installed via `argoproj/argo-helm` (chart `7.7.0`) in the `argocd` namespace with K8s secrets and a root Application CR.
 
-### Bootstrap flow
+**Bootstrap:** Terraform applies Helm charts + secrets → applies the root Application via the `kubectl` provider (the **only** direct manifest) → that root App syncs the rest from the GitOps repo. Manifest defaults to `${path.module}/../../../gitops/app.yaml` (resolved at plan time); override via `app_yaml_path` (`infra/{k3s,doks}/variables.tf`).
 
-1. Terraform deploys Helm charts + secrets
-2. Terraform applies the root Application manifest via the `kubectl` provider — this is the **only** manifest applied directly
-3. That root Application tells ArgoCD to sync the rest from the GitOps repo
-
-The manifest path defaults to `${path.module}/../../../gitops/app.yaml` (resolved at plan time) but can be overridden via `app_yaml_path`. See `infra/k3s/variables.tf` and `infra/doks/variables.tf`.
-
-### CLI setup
+**CLI setup:**
 
 ```bash
-## PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d) && echo -e "\n---> Local Login: https://localhost:8080\n---> Network Login: https://<YOUR_COMPUTER_IP>:8080\n---> Username: admin\n---> Password: $PASS\n" && kubectl port-forward svc/argocd-server -n argocd --address 0.0.0.0 8080:443
+PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d) \
+  && kubectl port-forward svc/argocd-server -n argocd --address 0.0.0.0 8080:443
+# Login: https://localhost:8080 — admin / $PASS
 ```
 
-## Managed Database (PostgreSQL)
+## Databases
 
-Database strategy varies by module: **DO Managed PG** for `doks` (see [DOKS Cluster](#doks-cluster-cloud)), **self-hosted StatefulSet** for `k3s` (see [K3s Module](#k3s-module-local)).
-The connection string and API key are injected into the `diagram-secrets` Kubernetes secret consumed by application pods.
-Related docs:
+DO **managed PG** for `doks`; **self-hosted StatefulSet** for `k3s` (see per-module sections). Connection string + API key are injected into the `diagram-secrets` K8s secret consumed by app pods.
 
-- `docs/incident-2026-09-03-postgres-credential-mismatch.md` — root cause + merged rotation runbook: a manual `ALTER USER` split the role password from `diagram-secrets` and broke backend auth over TCP (no data loss); includes the safe rotate-via-Terraform procedure.
+**Rotation / incident runbooks:**
+- `docs/incident-2026-09-03-postgres-credential-mismatch.md` — a manual `ALTER USER` split the role password from `diagram-secrets` and broke backend auth over TCP (no data loss); includes the safe rotate-via-Terraform procedure.
+- `docs/incident-2026-08-27-r2-backend-credential-conflict.md` — the R2/real-AWS credential collision behind the `TF_VAR_R2_*` namespace split.
 
----
+## K8s Secrets (created by Terraform)
 
-## Kubernetes Secrets
-
-The following secrets are created automatically by Terraform (no manual `kubectl create secret` needed):
-
-| Secret Name            | Namespace  | Purpose                                      |
-| ---------------------- | ---------- | -------------------------------------------- |
-| `cloudflared-token`    | `default`  | Cloudflare Tunnel token for `cloudflared`    |
-| `ghcr-login`           | `default`  | Docker registry credentials for GHCR         |
-| `diagram-secrets`      | `default`  | API key + PostgreSQL connection string       |
-| `repo-secret`          | `argocd`   | ArgoCD repository credentials (private repo) |
-| `postgres-credentials` | `database` | PostgreSQL password (k3s only)               |
-
----
+| Secret Name            | Namespace  | Purpose                                        |
+| ---------------------- | ---------- | ----------------------------------------------- |
+| `cloudflared-token`    | `default`  | Cloudflare Tunnel token for `cloudflared`      |
+| `ghcr-login`           | `default`  | Docker registry creds for GHCR                 |
+| `diagram-secrets`      | `default`  | API key + PostgreSQL connection string         |
+| `repo-secret`          | `argocd`   | ArgoCD repo credentials (private repo)         |
+| `postgres-credentials` | `database` | PostgreSQL password (k3s only)                 |
 
 ## Nix Dev Shell
 
-A Nix flake (`flake.nix`) provides a reproducible developer environment. All tools are pinned via the flake lock:
-
 ```bash
-# Enter the dev shell
-nix develop
-
-# Or with direnv (automatic on cd)
-direnv allow
+nix develop        # enter the flake shell (pinned via flake.lock)
+direnv allow       # or: auto-load on cd (also pulls + exports KUBECONFIG)
 ```
 
 | Tool        | Purpose                     |
@@ -386,20 +245,12 @@ direnv allow
 | `infisical` | Secret management CLI       |
 | `aws-nuke`  | Last-resort account cleanup |
 
----
-
 ## Security
 
-- **Secrets are managed in Infisical**, injected via `infisical run` — they never sit in a committed `.tfvars` file. The `secrets.tfvars.example` template is dummy/empty and safe to commit.
-- The DO token is consumed via `var.DO_TOKEN` (marked `sensitive = true`).
-- GitHub PAT and credentials are written directly to Kubernetes secrets — they never leave the Terraform state.
-- The Cloudflare module uses `TF_VAR_CLOUDFLARE_API_TOKEN` (provider) with `Zone → DNS → Edit`. The current key is an account**-wide** `terraform-admin` token (broad). It works, but it is not least-privilege; if you want a tighter posture later, mint a token scoped to just the `seekeru.tech` zone (`Zone:DNS:Edit`) and update the Infisical value.
-- R2 state-backend creds are namespaced `TF_VAR_R2_*` so they never collide with the real AWS provider creds (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`). The R2 *endpoint* is the ambient `AWS_ENDPOINT_URL_S3` (present on all runs), and the `aws` provider pins `endpoints.s3` to real AWS S3 so it never routes real calls to R2. This is the fix for `docs/incident-2026-08-27-r2-backend-credential-conflict.md`.
-- `secrets.tfvars`, `*.tfvars`, `kubeconfig`, and `.infisical.json` are all in `.gitignore`.
-- `secrets.tfvars.example` is safe to commit — it has dummy/empty values for all secrets.
-- Consider GitLeaks + pre-commit hooks to prevent accidental secret commits.
-
----
+- Secrets live in **Infisical**, injected via `infisical run` — never in a committed key. `.gitignore` drops `secrets.tfvars`, `*.tfvars`, `kubeconfig`, `.infisical.json`; `secrets.tfvars.example` is dummy and safe to commit.
+- GitHub PAT / credentials are written straight to K8s secrets — they never sit in Terraform state.
+- R2 backend creds are `TF_VAR_R2_*`, AWS creds `AWS_*`; the endpoint split is handled by the `infra/aws` provider pin (see [Remote state](#remote-state-r2--locking)).
+- Cloudflare token (`cfat_…`, `Zone→DNS→Edit`) is currently an account-wide `terraform-admin` token — broad. Works, but not least-privilege. Tighter posture: mint a zone-scoped `seekeru.tech` token and update Infisical.
 
 ## Cleanup
 
@@ -409,38 +260,24 @@ make destroy MOD=k3s
 make destroy MOD=aws
 ```
 
-Each module is destroyed independently.
+Each module destroys independently.
 
 ### Cost control (do NOT skip)
 
-A controlled teardown — `make destroy MOD=aws` — not aws-nuke, is how you exit the
-AWS module cleanly: `terraform destroy` tears down what it manages in dependency
-order and empties the R2-backed state so resources cannot be re-created by a
-stale `plan`. Cost alarms (in `infra/aws/monitoring.tf`) are your real tripwire:
-`zero_spend` (100% of limit) and `credit_cap` (95% actual / 90% forecasted)
-email via the `billing-alerts` SNS topic. Trust destroy + alarms for normal exits.
+Teardown the AWS module with `make destroy MOD=aws` — **not** aws-nuke. `destroy` removes managed resources in dependency order and empties R2 state so a stale `plan` can't recreate them. Cost alarms (`zero_spend` at plan, `credit_cap` at 95% actual / 90% forecast) email via the `billing-alerts` SNS topic — trust them as the tripwire for normal exits.
 
 ### aws-nuke — last-resort orphan cleanup (NOT routine teardown)
 
-`aws-nuke` is only for removing resources **not tracked in Terraform state**
-(manual console experiments, leaked drift) that `destroy` will never touch. It
-has no tag-based opt-out and no `mfa` gate is configured, so it is a genuinely
-dangerous one-way door.
-
-- `make nuke-list` — **dry-run only**; prints what WOULD be deleted, deletes nothing.
-- Destructive reset is deliberately **not** a `make` target; run it by hand:
+Only for resources **not in Terraform state** (manual experiments, leaked drift) that `destroy` never touches. No tag-based opt-out and no `mfa` gate — a genuinely one-way door.
 
 ```bash
+make nuke-list              # dry-run only: prints what WOULD be deleted, deletes nothing
+# after reviewing nuke-list, destructive reset is BY HAND (no make target):
 make destroy MOD=aws
-# then, only after reviewing make nuke-list output:
-infisical run --path /terraform --env dev -- \
-    aws-nuke -c nuke-config.yaml --no-dry-run
+infisical run --path /terraform --env dev -- aws-nuke -c nuke-config.yaml --no-dry-run
 ```
 
-- The config fences KMS + IAM (`resource-types.excludes` in `nuke-config.yaml`) so
-  the sweep won't orphan the credential chain Terraform needs to reprovision.
-- Nuke does **not** stop future bills. Prevent cost by keeping provisioning in
-  Terraform and using the alarms above as the tripwire.
+`nuke-config.yaml` fences KMS + IAM (`resource-types.excludes`) so the sweep can't orphan the credential chain Terraform needs to reprovision. Nuke does not stop future bills — keep provisioning in Terraform and rely on the alarms as the tripwire.
 
 ---
 
