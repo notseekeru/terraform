@@ -114,10 +114,13 @@ resource "kubernetes_stateful_set_v1" "postgres" {
             name  = "POSTGRES_DB"
             value = "diagramdb"
           }
+          # PG18+ image stores data under /var/lib/postgresql/<major>/docker and
+          # refuses a flat mount at /var/lib/postgresql/data (docker-library/postgres#1259).
+          # Mount the volume at the parent so the entrypoint can initdb into its
+          # versioned subdir (pg_upgrade-compatible layout).
           volume_mount {
             name       = "data"
-            mount_path = "/var/lib/postgresql/data"
-            sub_path   = "pgdata"
+            mount_path = "/var/lib/postgresql"
           }
           resources {
             requests = {
