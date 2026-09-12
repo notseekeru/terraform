@@ -9,12 +9,12 @@ The `seekeru.tech` zone (id `5a1a5f826d5a3398dc78ba360e24dfa0`) is managed.
 The following tunnel hostnames are **imported into state and now tracked by
 Terraform** (config mirrors them in `variables.tf` → `records`):
 
-| Map key | FQDN                | Target (tunnel)                 | Proxied |
-| ------- | ------------------- | ------------------------------- | ------- |
-| `apex`  | `seekeru.tech`      | `7bbbb5d4-…cfargotunnel.com`    | yes     |
-| `portfolio` | `portfolio.seekeru.tech` | `7bbbb5d4-…cfargotunnel.com`| yes     |
-| `diagram`   | `diagram.seekeru.tech`   | `7bbbb5d4-…cfargotunnel.com`| yes     |
-| `max`       | `max.seekeru.tech`       | `7bbbb5d4-…cfargotunnel.com`| yes     |
+| Map key      | FQDN                      | Target (tunnel)              | Proxied |
+| ------------ | ------------------------- | ---------------------------- | ------- |
+| `apex`       | `seekeru.tech`            | `7bbbb5d4-…cfargotunnel.com` | yes     |
+| `portfolio`  | `portfolio.seekeru.tech`  | `7bbbb5d4-…cfargotunnel.com` | yes     |
+| `diagram`    | `diagram.seekeru.tech`    | `7bbbb5d4-…cfargotunnel.com` | yes     |
+| `maxterview` | `maxterview.seekeru.tech` | `7bbbb5d4-…cfargotunnel.com` | yes     |
 
 `terraform plan MOD=cloudflare` should report **No changes** against live DNS.
 
@@ -55,7 +55,7 @@ try to duplicate it:
 
 1. Identify the record id:
    `curl -s -H "Authorization: Bearer $TF_VAR_CLOUDFLARE_API_TOKEN" \
-     "https://api.cloudflare.com/client/v4/zones/<ZONE_ID>/dns_records"` (or the
+"https://api.cloudflare.com/client/v4/zones/<ZONE_ID>/dns_records"` (or the
    dashboard).
 2. Add the matching entry to `records` in `variables.tf`.
 3. Import it into state:

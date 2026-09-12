@@ -51,10 +51,10 @@ variable "records" {
       content  = "7bbbb5d4-0fbc-469d-bbfe-a1de34559a3d.cfargotunnel.com"
       proxied  = true
     }
-    max = {
+    maxterview = {
       zone_key = "seekeru"
       type     = "CNAME"
-      name     = "max"
+      name     = "maxterview"
       content  = "7bbbb5d4-0fbc-469d-bbfe-a1de34559a3d.cfargotunnel.com"
       proxied  = true
     }

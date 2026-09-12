@@ -208,12 +208,12 @@ Notable wiring:
 
 **Scope** — the 4 tunnel hostnames on `seekeru.tech` (managed declaratively):
 
-| Record                   | Type  | Target                       | Proxied |
-| ------------------------ | ----- | ---------------------------- | ------- |
-| `seekeru.tech` (apex)    | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
-| `portfolio.seekeru.tech` | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
-| `diagram.seekeru.tech`   | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
-| `max.seekeru.tech`       | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
+| Record                    | Type  | Target                       | Proxied |
+| ------------------------- | ----- | ---------------------------- | ------- |
+| `seekeru.tech` (apex)     | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
+| `portfolio.seekeru.tech`  | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
+| `diagram.seekeru.tech`    | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
+| `maxterview.seekeru.tech` | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
 
 Imported into state first (adopt, don't overwrite), now tracked by Terraform.
 
