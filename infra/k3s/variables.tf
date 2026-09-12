@@ -68,8 +68,9 @@ variable "MAXTERVIEW_LLM_MODEL" {
 }
 
 variable "MAXTERVIEW_LLM_API_KEY" {
-  description = "API key for the LLM provider"
+  description = "API key for the LLM provider; empty is correct for an unauthenticated self-hosted endpoint"
   sensitive   = true
+  default     = ""
 }
 
 # Billing is optional at runtime: unset keys make /billing/* answer 503, nothing else breaks.

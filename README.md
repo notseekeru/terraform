@@ -171,7 +171,7 @@ make dump   # → ~/backups/diagramdb-<timestamp>.sql.gz
 `kubernetes_secret.maxterview_secrets` is the one consumer-side contract for maxterview: the backend
 Deployment injects it with `envFrom`, so **each key must literally equal the env var name** (UPPERCASE).
 
-| Infisical key (path `/consumers/terraform`)                            | Required | Notes                                                    |
+| Infisical key (path `/consumers/terraform`)                             | Required | Notes                                                    |
 | ----------------------------------------------------------------------- | -------- | -------------------------------------------------------- |
 | `TF_VAR_MAXTERVIEW_DATABASE_URL`                                        | yes      | Neon **direct** host + `?sslmode=require`, not `-pooler` |
 | `TF_VAR_MAXTERVIEW_CLERK_JWKS_URL`                                      | yes      | prod instance JWKS (backend verifies JWTs)               |
@@ -281,17 +281,18 @@ direnv allow       # or: auto-load on cd (also pulls + exports KUBECONFIG)
 only **within the same folder** on CLI 0.41.x (cross-folder refs store verbatim — verified 2026-09-12).
 So a consumer folder must hold every key its target needs; `*_source` folders are reference copies.
 
-| Path                    | Holds                                                        | Read by                                    |
-| ----------------------- | ------------------------------------------------------------ | ------------------------------------------ |
-| `/consumers/terraform`  | `TF_VAR_*` (incl. `TF_VAR_MAXTERVIEW_*`), `AWS_*`             | `make init/plan/apply MOD=…` (`SECRETS_PATH`) |
-| `/consumers/ansible`    | cloudflare / github / tailscale / slack creds                | `make -C ~/ansible strap-pi\|tailscale-pi*` |
-| `/sources/github`       | `GITHUB_*`                                                   | nothing yet — duplicate of the `TF_VAR_*` pair |
-| `/sources/cloudflare`   | `CLOUDFLARE_TOKEN`, `R2_ACCOUNT_ID`, `R2_BUCKET`, `AWS_*`    | nothing yet (its `AWS_*` are R2 creds — misnamed per ADR 0001) |
-| `/sources/tailscale`    | `TAILSCALE_AUTH_*`                                           | nothing yet                                |
-| `/sources/webhooks`     | `ALERTMANAGER_SLACK_WEBHOOK`                                 | nothing yet                                |
+| Path                   | Holds                                                     | Read by                                                        |
+| ---------------------- | --------------------------------------------------------- | -------------------------------------------------------------- |
+| `/consumers/terraform` | `TF_VAR_*` (incl. `TF_VAR_MAXTERVIEW_*`), `AWS_*`         | `make init/plan/apply MOD=…` (`SECRETS_PATH`)                  |
+| `/consumers/ansible`   | cloudflare / github / tailscale / slack creds             | `make -C ~/ansible strap-pi\|tailscale-pi*`                    |
+| `/sources/github`      | `GITHUB_*`                                                | nothing yet — duplicate of the `TF_VAR_*` pair                 |
+| `/sources/cloudflare`  | `CLOUDFLARE_TOKEN`, `R2_ACCOUNT_ID`, `R2_BUCKET`, `AWS_*` | nothing yet (its `AWS_*` are R2 creds — misnamed per ADR 0001) |
+| `/sources/tailscale`   | `TAILSCALE_AUTH_*`                                        | nothing yet                                                    |
+| `/sources/webhooks`    | `ALERTMANAGER_SLACK_WEBHOOK`                              | nothing yet                                                    |
 
 `/sources/*` are candidates for deletion (their `GITHUB_*`/`CLOUDFLARE_TOKEN` values are byte-identical to the
 `/consumers/terraform` copies — verified by hash) or for a CLI upgrade that makes `${folder.KEY}` work.
+
 - GitHub PAT / credentials are written straight to K8s secrets — they never sit in Terraform state.
 - R2 backend creds are `TF_VAR_R2_*`, AWS creds `AWS_*`; the endpoint split is handled by the `infra/aws` provider pin (see [Remote state](#remote-state-r2--locking)).
 - Cloudflare token (`cfat_…`, `Zone→DNS→Edit`) is currently an account-wide `terraform-admin` token — broad. Works, but not least-privilege. Tighter posture: mint a zone-scoped `seekeru.tech` token and update Infisical.
