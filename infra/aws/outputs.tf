@@ -8,9 +8,9 @@ output "cloudfront_domain" {
   value       = aws_cloudfront_distribution.s3_dist.domain_name
 }
 
-output "alb_domain_validation_cname" {
-  description = "Informational: the ACM validation CNAME(s) (auto-created in Cloudflare by this module when alb_domain is set; empty if no domain)"
-  value = var.alb_domain != "" ? [
+output "ALB_DOMAIN_validation_cname" {
+  description = "Informational: the ACM validation CNAME(s) (auto-created in Cloudflare by this module when ALB_DOMAIN is set; empty if no domain)"
+  value = var.ALB_DOMAIN != "" ? [
     for r in aws_acm_certificate.alb[0].domain_validation_options : {
       name  = r.resource_record_name
       type  = r.resource_record_type

@@ -18,9 +18,9 @@ resource "aws_lb_target_group" "main" {
 }
 
 resource "aws_acm_certificate" "alb" {
-  count = var.alb_domain != "" ? 1 : 0
+  count = var.ALB_DOMAIN != "" ? 1 : 0
 
-  domain_name       = var.alb_domain
+  domain_name       = var.ALB_DOMAIN
   validation_method = "DNS"
 }
 
@@ -32,11 +32,11 @@ resource "aws_acm_certificate" "alb" {
 #     certificate_validation below can poll until ISSUED.
 
 resource "cloudflare_dns_record" "alb" {
-  count    = var.alb_domain != "" ? 1 : 0
+  count    = var.ALB_DOMAIN != "" ? 1 : 0
   provider = cloudflare.cf
 
   zone_id = var.cloudflare_zone_id
-  name    = var.alb_domain
+  name    = var.ALB_DOMAIN
   type    = "CNAME"
   content = aws_lb.main.dns_name
   proxied = false
@@ -59,7 +59,7 @@ resource "cloudflare_dns_record" "alb_validation" {
 }
 
 resource "aws_acm_certificate_validation" "alb" {
-  count           = var.alb_domain != "" ? 1 : 0
+  count           = var.ALB_DOMAIN != "" ? 1 : 0
   certificate_arn = aws_acm_certificate.alb[0].arn
   # Auto-validate: poll ACM until ISSUED, checking each CF-created validation CNAME.
   validation_record_fqdns = [
@@ -89,7 +89,7 @@ resource "aws_lb_listener" "main" {
 }
 
 resource "aws_lb_listener" "https" {
-  count             = var.alb_domain != "" ? 1 : 0
+  count             = var.ALB_DOMAIN != "" ? 1 : 0
   load_balancer_arn = aws_lb.main.arn
   port              = "443"
   protocol          = "HTTPS"

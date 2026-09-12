@@ -34,7 +34,7 @@ variable "credit_cap_usd" {
   # Free-tier promotional credit balance (~$100 + $100 explore); alarm before exhaustion
 }
 
-variable "alb_domain" {
+variable "ALB_DOMAIN" {
   type    = string
   default = ""
   # Custom domain (e.g. alb.seekeru.tech) for ACM HTTPS on the ALB.

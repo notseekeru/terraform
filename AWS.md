@@ -127,9 +127,10 @@ infra/aws/
 - **SSM default IAM policy does not cover custom paths:** `AmazonSSMManagedInstanceCore` only grants read access under `parameter/aws/*`. Params stored under `/app/*` (DB credentials/endpoint) require an inline role policy (`security.tf`) with `ssm:GetParameter`/`GetParameters`/`GetParametersByPath` on `parameter/app/*` — otherwise EC2 gets `AccessDenied` at runtime.
 - **ASG health check must be ELB when registered to a target group:** setting `target_group_arns` alone does not flip the ASG to ELB health checks; add `health_check_type = "ELB"` (`compute.tf`) or instances that fail ALB health checks are never replaced.
 - **SNS delivers only to confirmed subscriptions:** the budget and CloudWatch alarm both publish to the `billing-alerts` topic, but an email subscription requires a one-time confirmation click (`TF_VAR_ALERT_EMAIL`); without confirming it, alerts are silently dropped.
+
 * **R2 endpoint must never leak to the AWS provider:** the ambient `AWS_ENDPOINT_URL_S3` is shared by the s3 backend and the AWS provider; without the `endpoints { s3 = "https://s3.ap-southeast-1.amazonaws.com" }` pin in `provider.tf`, the provider routes real `aws_s3_bucket*` calls to R2 (rejected with `access key has length 20, should be 32`). Keep the pin; never `unset AWS_ENDPOINT_URL_S3` (it starves the backend). Full context: root `README.md` §Remote state + `docs/incident-2026-08-27-r2-backend-credential-conflict.md`.
 * **RDS username 'admin' is reserved:** PostgreSQL rejects `MasterUsername = admin`. Use `dbadmin` (or any non-reserved word).
-* **ALB cert validation is now fully automatic (no manual CF step):** when `alb_domain` is set, `infra/aws` uses an aliased `cloudflare` provider (in-module) to create the `alb.<domain>` CNAME to the ALB plus the ACM validation CNAME(s) pulled from `aws_acm_certificate.domain_validation_options`. `aws_acm_certificate_validation` polls those until ISSUED. DNS is external (not Route53), so the module owns the needed CF records itself — do NOT hand-add them in the dashboard or Terraform will detect drift/duplicate.
+* **ALB cert validation is now fully automatic (no manual CF step):** when `ALB_DOMAIN` is set, `infra/aws` uses an aliased `cloudflare` provider (in-module) to create the `alb.<domain>` CNAME to the ALB plus the ACM validation CNAME(s) pulled from `aws_acm_certificate.domain_validation_options`. `aws_acm_certificate_validation` polls those until ISSUED. DNS is external (not Route53), so the module owns the needed CF records itself — do NOT hand-add them in the dashboard or Terraform will detect drift/duplicate.
 
 ---
 
@@ -143,7 +144,7 @@ make init MOD=aws
 make plan MOD=aws
 
 # 3. Spin up the infrastructure (non-interactive approve)
-export TF_VAR_alb_domain="alb.seekeru.tech"   # enables ACM cert + :443 + HTTP->HTTPS
+export TF_VAR_ALB_DOMAIN="alb.seekeru.tech"   # enables ACM cert + :443 + HTTP->HTTPS
 make apply MOD=aws # or: terraform -chdir=infra/aws apply -auto-approve
 
 # 4. HTTPS/DNS is handled automatically by the module's cloudflare provider:
@@ -157,12 +158,12 @@ make destroy MOD=aws
 
 ### Deployed endpoints (as of this writing)
 
-| Endpoint | URL | Status |
-|----------|-----|--------|
-| ALB HTTPS (app)    | `https://alb.seekeru.tech` | 200 (nginx) |
-| ALB HTTP (redirect) | `http://alb.seekeru.tech`  | 301 -> HTTPS |
+| Endpoint            | URL                                     | Status                                |
+| ------------------- | --------------------------------------- | ------------------------------------- |
+| ALB HTTPS (app)     | `https://alb.seekeru.tech`              | 200 (nginx)                           |
+| ALB HTTP (redirect) | `http://alb.seekeru.tech`               | 301 -> HTTPS                          |
 | CloudFront (assets) | `https://d14f3y8b1rk8te.cloudfront.net` | serves S3 static assets once uploaded |
-| RDS PostgreSQL      | `main-db` single-AZ, user `dbadmin` | private, not publicly reachable |
+| RDS PostgreSQL      | `main-db` single-AZ, user `dbadmin`     | private, not publicly reachable       |
 
 ---
 
@@ -172,26 +173,29 @@ As-built state is **verified and drift-free** — `terraform plan` reports `No c
 
 ### High value, low cost (recommended next)
 
-| Upgrade | What it does | Cost |
-|---------|--------------|------|
-| **Seed S3 + CloudFront** | Upload an `index.html`/assets to the `static_assets` bucket so CloudFront (`d14f3y8b1rk8te.cloudfront.net`) stops 403ing. | Free |
+| Upgrade                              | What it does                                                                                                                                                                      | Cost |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| **Seed S3 + CloudFront**             | Upload an `index.html`/assets to the `static_assets` bucket so CloudFront (`d14f3y8b1rk8te.cloudfront.net`) stops 403ing.                                                         | Free |
 | **CloudFront custom domain + HTTPS** | Add e.g. `static.seekeru.tech` with an ACM cert in `us-east-1` (CloudFront requires that region — a known cross-region gotcha), same Cloudflare CNAME-validation flow as the ALB. | Free |
-| **Wire app → RDS** | Have the EC2 user-data/app read `/app/db_endpoint` + `/app/POSTGRES_PASSWORD` from SSM (IAM now permits it) to form a live 3-tier app instead of static nginx. | Free |
-| **S3 versioning + lifecycle** | Guard against accidental asset deletion; add the `.terraform-version` file AWS.md §6 recommends. | Free |
+| **Wire app → RDS**                   | Have the EC2 user-data/app read `/app/db_endpoint` + `/app/POSTGRES_PASSWORD` from SSM (IAM now permits it) to form a live 3-tier app instead of static nginx.                    | Free |
+| **S3 versioning + lifecycle**        | Guard against accidental asset deletion; add the `.terraform-version` file AWS.md §6 recommends.                                                                                  | Free |
 
 ### Medium value
-| Upgrade | Cost |
-|---------|------|
+
+| Upgrade                    | Cost                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------ | ------- |
 | **Live Multi-AZ failover** | Flip `multi_az = true` when ready to spend credits; the DB subnet group already spans AZs. | ~$80/mo |
-| **The 3-tier story** | Combine HTTPS + app→RDS wiring into a demoable full-stack URL. | Free |
+| **The 3-tier story**       | Combine HTTPS + app→RDS wiring into a demoable full-stack URL.                             | Free    |
 
 ### Deferred / not recommended for a sandbox
-| Upgrade | Why not |
-|---------|---------|
-| NAT + private subnets | ~$33/mo; conflicts with the free-tier cost goal. |
+
+| Upgrade                         | Why not                                                    |
+| ------------------------------- | ---------------------------------------------------------- |
+| NAT + private subnets           | ~$33/mo; conflicts with the free-tier cost goal.           |
 | Larger instances / more storage | Burns the ~\$200 credit balance for negligible demo value. |
 
 ### Revalidation commands
+
 ```bash
 # Drift check (must report No changes)
 make plan MOD=aws
@@ -205,4 +209,3 @@ curl -s -o /dev/null -w '%{http_code} -> %{redirect_url}\n' http://alb.seekeru.t
 
 # Note: the raw ELB hostname returns 000 on https — correct, its cert only binds to the domain.
 ```
-

@@ -8,13 +8,13 @@
 
 ## Prerequisites
 
-| Requirement            | Details                                                                                  |
-| ---------------------- | ---------------------------------------------------------------------------------------- |
-| **Terraform**          | `>= 1.0` ([install](https://developer.hashicorp.com/terraform/install))                   |
-| **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — only for `doks`                          |
+| Requirement            | Details                                                                                 |
+| ---------------------- | --------------------------------------------------------------------------------------- |
+| **Terraform**          | `>= 1.0` ([install](https://developer.hashicorp.com/terraform/install))                 |
+| **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — only for `doks`                        |
 | **Cloudflare token**   | API token `Zone → DNS → Edit` (`TF_VAR_CLOUDFLARE_API_TOKEN`) — for `cloudflare` module |
-| **k3s**                | Existing k3s cluster with `~/.kube/config` — see [K3s Module](#k3s-module-local)          |
-| **Nix / direnv**       | Optional: `nix develop` shell; `direnv` auto-loads it, pulls, exports `KUBECONFIG`        |
+| **k3s**                | Existing k3s cluster with `~/.kube/config` — see [K3s Module](#k3s-module-local)        |
+| **Nix / direnv**       | Optional: `nix develop` shell; `direnv` auto-loads it, pulls, exports `KUBECONFIG`      |
 
 `make` is optional (workflow targets). Secrets are not shipped in the repo — see [Fresh clone](#fresh-clone-on-a-new-device).
 
@@ -24,12 +24,12 @@
 
 State lives in a **Cloudflare R2 bucket** (`s3` backend) under a per-module key — no committed local state.
 
-| Module       | State key                                  | Backend |
-| ------------ | ------------------------------------------ | ------- |
-| `doks`       | `terraform/doks/terraform.tfstate`         | s3      |
-| `k3s`        | `terraform/k3s/terraform.tfstate`          | s3      |
-| `aws`        | `terraform/aws/terraform.tfstate`          | s3      |
-| `cloudflare` | `terraform/cloudflare/terraform.tfstate`   | s3      |
+| Module       | State key                                | Backend |
+| ------------ | ---------------------------------------- | ------- |
+| `doks`       | `terraform/doks/terraform.tfstate`       | s3      |
+| `k3s`        | `terraform/k3s/terraform.tfstate`        | s3      |
+| `aws`        | `terraform/aws/terraform.tfstate`        | s3      |
+| `cloudflare` | `terraform/cloudflare/terraform.tfstate` | s3      |
 
 **How the R2 endpoint is delivered (read once):** the s3 backend and the AWS provider both read the ambient `AWS_*` namespace, so they must be kept from colliding:
 
@@ -107,18 +107,18 @@ Each module keeps its own `versions.tf`, `provider.tf`, `variables.tf`, `main.tf
 
 Module targets take `MOD=doks|k3s|aws|cloudflare`; the `infra/` prefix and Infisical flow are baked in. Backend-facing targets (`init`, `upgradeinit`, `reconfigure`, `migrate`) pass `backend_config` through `/bin/sh -c` so the `$TF_VAR_R2_*` refs expand (Infisical execs directly and wouldn't expand them). The R2 endpoint is the ambient `AWS_ENDPOINT_URL_S3` present on all targets. Backend/`aws`-provider separation is handled by the provider pin — not an env `unset`. `nuke-list` is account-scoped (ignores `MOD`) and runs from the repo root.
 
-| Target             | Description                                                              |
-| ------------------ | ------------------------------------------------------------------------ |
-| `make init`        | Init providers + bind R2 backend                                        |
-| `make upgradeinit` | Upgrade providers / re-bind backend (`-upgrade`)                        |
-| `make plan`        | Preview changes |
-| `make apply`       | Apply changes |
-| `make destroy`     | Tear down resources |
-| `make fmt`         | Format `.tf` files |
-| `make validate`    | Validate module |
-| `make migrate`     | One-time push of local state to R2 (`init -migrate-state`)  |
-| `make dump`        | Dump `diagramdb` from local k3s postgres → `~/backups/` |
-| `make nuke-list`   | **Dry-run** aws-nuke sweep — deletes nothing |
+| Target             | Description                                                |
+| ------------------ | ---------------------------------------------------------- |
+| `make init`        | Init providers + bind R2 backend                           |
+| `make upgradeinit` | Upgrade providers / re-bind backend (`-upgrade`)           |
+| `make plan`        | Preview changes                                            |
+| `make apply`       | Apply changes                                              |
+| `make destroy`     | Tear down resources                                        |
+| `make fmt`         | Format `.tf` files                                         |
+| `make validate`    | Validate module                                            |
+| `make migrate`     | One-time push of local state to R2 (`init -migrate-state`) |
+| `make dump`        | Dump `diagramdb` from local k3s postgres → `~/backups/`    |
+| `make nuke-list`   | **Dry-run** aws-nuke sweep — deletes nothing               |
 
 **Variables:** `MOD` (slugs above), `ENV` (default `dev`), `SECRETS_PATH` (default `/terraform`).
 
@@ -149,10 +149,10 @@ A DO managed PostgreSQL 16 (`db-s-1vcpu-1gb`) lives in the cluster VPC; creds go
 
 For local/edge dev. Runs against an existing k3s cluster via `~/.kube/config`.
 
-| Aspect                | Detail                                             |
-| --------------------- | -------------------------------------------------- |
-| **No DO dependency**  | Providers read local kubeconfig                    |
-| **Database**          | Self-hosted PG 16 StatefulSet, `database` ns, 5Gi PVC on `local-path` |
+| Aspect                | Detail                                                                            |
+| --------------------- | --------------------------------------------------------------------------------- |
+| **No DO dependency**  | Providers read local kubeconfig                                                   |
+| **Database**          | Self-hosted PG 16 StatefulSet, `database` ns, 5Gi PVC on `local-path`             |
 | **Connection string** | `postgresql://diagram:${pass}@postgres.database.svc.cluster.local:5432/diagramdb` |
 
 ```bash
@@ -171,17 +171,17 @@ make dump   # → ~/backups/diagramdb-<timestamp>.sql.gz
 `kubernetes_secret.maxterview_secrets` is the one consumer-side contract for maxterview: the backend
 Deployment injects it with `envFrom`, so **each key must literally equal the env var name** (UPPERCASE).
 
-| Infisical key (path `/terraform`)              | Required | Notes                                                    |
-| ---------------------------------------------- | -------- | -------------------------------------------------------- |
-| `TF_VAR_MAXTERVIEW_DATABASE_URL`               | yes      | Neon **direct** host + `?sslmode=require`, not `-pooler` |
-| `TF_VAR_MAXTERVIEW_CLERK_JWKS_URL`             | yes      | prod instance JWKS (backend verifies JWTs)               |
-| `TF_VAR_MAXTERVIEW_CLERK_DOMAIN`               | yes      | e.g. `https://clerk.seekeru.tech`                        |
-| `TF_VAR_MAXTERVIEW_LLM_BASE_URL` / `_MODEL` / `_API_KEY` | yes | empty `LLM_*` = silent STUB mode, so these fail at plan |
-| `TF_VAR_MAXTERVIEW_STRIPE_SECRET_KEY` / `_WEBHOOK_SECRET` / `_PRICE_ID` | no | unset → `/api/billing/*` answers 503      |
-| `TF_VAR_MAXTERVIEW_CLERK_AUDIENCE`             | no       | empty = accept tokens without an `aud` claim             |
-| `TF_VAR_MAXTERVIEW_MIGRATE_DATABASE_URL`       | no       | reserved (D12), migrate-role DSN for the migration Job   |
+| Infisical key (path `/terraform`)                                       | Required | Notes                                                    |
+| ----------------------------------------------------------------------- | -------- | -------------------------------------------------------- |
+| `TF_VAR_MAXTERVIEW_DATABASE_URL`                                        | yes      | Neon **direct** host + `?sslmode=require`, not `-pooler` |
+| `TF_VAR_MAXTERVIEW_CLERK_JWKS_URL`                                      | yes      | prod instance JWKS (backend verifies JWTs)               |
+| `TF_VAR_MAXTERVIEW_CLERK_DOMAIN`                                        | yes      | e.g. `https://clerk.seekeru.tech`                        |
+| `TF_VAR_MAXTERVIEW_LLM_BASE_URL` / `_MODEL` / `_API_KEY`                | yes      | empty `LLM_*` = silent STUB mode, so these fail at plan  |
+| `TF_VAR_MAXTERVIEW_STRIPE_SECRET_KEY` / `_WEBHOOK_SECRET` / `_PRICE_ID` | no       | unset → `/api/billing/*` answers 503                     |
+| `TF_VAR_MAXTERVIEW_CLERK_AUDIENCE`                                      | no       | empty = accept tokens without an `aud` claim             |
+| `TF_VAR_MAXTERVIEW_MIGRATE_DATABASE_URL`                                | no       | reserved (D12), migrate-role DSN for the migration Job   |
 
-Extra keys added later are picked up with no manifest change (`envFrom`), but a *malformed* key name is
+Extra keys added later are picked up with no manifest change (`envFrom`), but a _malformed_ key name is
 all-or-nothing: it blocks the whole pod. Rotate from Infisical + `make apply MOD=k3s`; never `kubectl apply`
 and never `secrets.tfvars`.
 
@@ -195,8 +195,9 @@ and never `secrets.tfvars`.
 **Credentials** (Infisical): `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `TF_VAR_ALERT_EMAIL`, and the `TF_VAR_R2_*` backend pair.
 
 Notable wiring:
+
 - **ALB** (CPU target-tracking ASG) with ELB health checks; **S3+CloudFront** for static assets; **CloudWatch** CPU alarm + zero-spend/credit-cap budgets → SNS (`TF_VAR_ALERT_EMAIL`; confirm the subscription once).
-- **HTTPS is optional & automatic** — set `alb_domain` (here `alb.seekeru.tech`): the module's aliased `cloudflare` provider creates the `alb.*` CNAME + ACM validation CNAME, and `aws_acm_certificate_validation` waits until ISSUED before binding :443. No dashboard step. ALB records are deliberately kept in `infra/aws` (not `infra/cloudflare`) so each module is self-contained.
+- **HTTPS is optional & automatic** — set `ALB_DOMAIN` (here `alb.seekeru.tech`): the module's aliased `cloudflare` provider creates the `alb.*` CNAME + ACM validation CNAME, and `aws_acm_certificate_validation` waits until ISSUED before binding :443. No dashboard step. ALB records are deliberately kept in `infra/aws` (not `infra/cloudflare`) so each module is self-contained.
 - **DB user:** `dbadmin` (PG reserves `admin`).
 
 > Deployment notes, verified endpoints, the R2/AWS provider endpoint split, upgrade paths & revalidation: see **`AWS.md`**.
@@ -207,12 +208,12 @@ Notable wiring:
 
 **Scope** — the 4 tunnel hostnames on `seekeru.tech` (managed declaratively):
 
-| Record                   | Type  | Target                    | Proxied |
-| ------------------------ | ----- | ------------------------- | ------- |
-| `seekeru.tech` (apex)    | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes   |
-| `portfolio.seekeru.tech` | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes   |
-| `diagram.seekeru.tech`   | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes   |
-| `max.seekeru.tech`       | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes   |
+| Record                   | Type  | Target                       | Proxied |
+| ------------------------ | ----- | ---------------------------- | ------- |
+| `seekeru.tech` (apex)    | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
+| `portfolio.seekeru.tech` | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
+| `diagram.seekeru.tech`   | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
+| `max.seekeru.tech`       | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
 
 Imported into state first (adopt, don't overwrite), now tracked by Terraform.
 
@@ -239,19 +240,20 @@ PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.d
 DO **managed PG** for `doks`; **self-hosted StatefulSet** for `k3s` (see per-module sections). Connection string + API key are injected into the `diagram-secrets` K8s secret consumed by app pods.
 
 **Rotation / incident runbooks:**
+
 - `docs/incident-2026-09-03-postgres-credential-mismatch.md` — a manual `ALTER USER` split the role password from `diagram-secrets` and broke backend auth over TCP (no data loss); includes the safe rotate-via-Terraform procedure.
 - `docs/incident-2026-08-27-r2-backend-credential-conflict.md` — the R2/real-AWS credential collision behind the `TF_VAR_R2_*` namespace split.
 
 ## K8s Secrets (created by Terraform)
 
-| Secret Name            | Namespace  | Purpose                                        |
-| ---------------------- | ---------- | ----------------------------------------------- |
-| `cloudflared-token`    | `default`  | Cloudflare Tunnel token for `cloudflared`      |
-| `ghcr-login`           | `default`  | Docker registry creds for GHCR                 |
-| `diagram-secrets`      | `default`  | API key + PostgreSQL connection string         |
+| Secret Name            | Namespace  | Purpose                                                 |
+| ---------------------- | ---------- | ------------------------------------------------------- |
+| `cloudflared-token`    | `default`  | Cloudflare Tunnel token for `cloudflared`               |
+| `ghcr-login`           | `default`  | Docker registry creds for GHCR                          |
+| `diagram-secrets`      | `default`  | API key + PostgreSQL connection string                  |
 | `maxterview-secrets`   | `default`  | Neon DSN + Clerk/LLM/Stripe env, injected via `envFrom` |
-| `repo-secret`          | `argocd`   | ArgoCD repo credentials (private repo)         |
-| `postgres-credentials` | `database` | PostgreSQL password (k3s only)                 |
+| `repo-secret`          | `argocd`   | ArgoCD repo credentials (private repo)                  |
+| `postgres-credentials` | `database` | PostgreSQL password (k3s only)                          |
 
 ## Nix Dev Shell
 
