@@ -215,6 +215,32 @@ resource "kubernetes_secret" "ghcr_credentials" {
   }
 }
 
+# The same pull secret in each app namespace: `imagePullSecrets` are NAMESPACE-LOCAL, so a workload
+# in `maxterview` cannot see the copy in `default` — without this every pod (and the PreSync migrate
+# Job, which then aborts the whole sync) sits in ImagePullBackOff. Deliberately a separate resource
+# from the one above so the existing `default` secret is never recreated; extend the list as
+# namespaces appear (staging).
+resource "kubernetes_secret" "ghcr_credentials_app_ns" {
+  for_each = toset([kubernetes_namespace.maxterview.metadata[0].name])
+
+  metadata {
+    name      = "ghcr-login"
+    namespace = each.value
+  }
+  type = "kubernetes.io/dockerconfigjson"
+  data = {
+    ".dockerconfigjson" = jsonencode({
+      auths = {
+        "ghcr.io" = {
+          username = var.GITHUB_USERNAME
+          password = var.GITHUB_PAT
+          auth     = base64encode("${var.GITHUB_USERNAME}:${var.GITHUB_PAT}")
+        }
+      }
+    })
+  }
+}
+
 resource "kubernetes_secret" "diagram_secrets" {
   depends_on = [kubernetes_stateful_set_v1.postgres]
 
