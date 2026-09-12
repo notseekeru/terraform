@@ -1,5 +1,5 @@
 MOD ?=
-ENV ?= dev
+ENV ?= prod
 SECRETS_PATH ?= /consumers/terraform
 
 # R2 state-bucket creds are namespaced TF_VAR_R2_* so they never collide with the
@@ -98,4 +98,4 @@ verify-db-auth:
 
 # Retrieves and prints secrets variable name but not the value itself(left blank for security reasons).
 secrets:
-	infisical secrets generate-example-env --env=dev --path=/terraform
+	infisical secrets generate-example-env --env=$(ENV) --path=$(SECRETS_PATH)

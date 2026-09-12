@@ -319,7 +319,7 @@ Only for resources **not in Terraform state** (manual experiments, leaked drift)
 make nuke-list              # dry-run only: prints what WOULD be deleted, deletes nothing
 # after reviewing nuke-list, destructive reset is BY HAND (no make target):
 make destroy MOD=aws
-infisical run --path /consumers/terraform --env dev -- aws-nuke -c nuke-config.yaml --no-dry-run
+infisical run --path /consumers/terraform --env prod -- aws-nuke -c nuke-config.yaml --no-dry-run
 ```
 
 `nuke-config.yaml` fences KMS + IAM (`resource-types.excludes`) so the sweep can't orphan the credential chain Terraform needs to reprovision. Nuke does not stop future bills — keep provisioning in Terraform and rely on the alarms as the tripwire.
