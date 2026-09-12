@@ -229,6 +229,29 @@ resource "kubernetes_secret" "diagram_secrets" {
   type = "Opaque"
 }
 
+resource "kubernetes_secret" "maxterview_secrets" {
+  metadata {
+    name      = "maxterview-secrets"
+    namespace = "default"
+  }
+  # Keys are the app's env var names verbatim: the Deployment consumes this with `envFrom`.
+  # UPPERCASE only — a lowercase key here would be an env var the app never reads.
+  data = {
+    DATABASE_URL          = var.MAXTERVIEW_DATABASE_URL
+    MIGRATE_DATABASE_URL  = var.MAXTERVIEW_MIGRATE_DATABASE_URL
+    CLERK_JWKS_URL        = var.MAXTERVIEW_CLERK_JWKS_URL
+    CLERK_DOMAIN          = var.MAXTERVIEW_CLERK_DOMAIN
+    CLERK_AUDIENCE        = var.MAXTERVIEW_CLERK_AUDIENCE
+    LLM_BASE_URL          = var.MAXTERVIEW_LLM_BASE_URL
+    LLM_MODEL             = var.MAXTERVIEW_LLM_MODEL
+    LLM_API_KEY           = var.MAXTERVIEW_LLM_API_KEY
+    STRIPE_SECRET_KEY     = var.MAXTERVIEW_STRIPE_SECRET_KEY
+    STRIPE_WEBHOOK_SECRET = var.MAXTERVIEW_STRIPE_WEBHOOK_SECRET
+    STRIPE_PRICE_ID       = var.MAXTERVIEW_STRIPE_PRICE_ID
+  }
+  type = "Opaque"
+}
+
 resource "kubernetes_secret" "argocd_repo_secret" {
   depends_on = [helm_release.argocd]
 
@@ -257,6 +280,7 @@ resource "kubectl_manifest" "gitops_app" {
     kubernetes_secret.cloudflare_tunnel_token,
     kubernetes_secret.ghcr_credentials,
     kubernetes_secret.diagram_secrets,
+    kubernetes_secret.maxterview_secrets,
   ]
 
   yaml_body = file(local.app_yaml_path)

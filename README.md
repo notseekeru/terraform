@@ -159,11 +159,34 @@ For local/edge dev. Runs against an existing k3s cluster via `~/.kube/config`.
 make init MOD=k3s && make plan MOD=k3s && make apply MOD=k3s
 ```
 
-Needs Infisical secrets: `POSTGRES_PASSWORD`, `CLOUDFLARE_TOKEN`, `GITHUB_PAT`, `DIAGRAM_API_KEY`. Back up the DB before `destroy`:
+Needs Infisical secrets: `POSTGRES_PASSWORD`, `CLOUDFLARE_TOKEN`, `GITHUB_PAT`, `DIAGRAM_API_KEY`, plus the
+maxterview set below. Back up the DB before `destroy`:
 
 ```bash
 make dump   # → ~/backups/diagramdb-<timestamp>.sql.gz
 ```
+
+### maxterview secrets (Neon — external DB, no in-cluster Postgres)
+
+`kubernetes_secret.maxterview_secrets` is the one consumer-side contract for maxterview: the backend
+Deployment injects it with `envFrom`, so **each key must literally equal the env var name** (UPPERCASE).
+
+| Infisical key (path `/terraform`)              | Required | Notes                                                    |
+| ---------------------------------------------- | -------- | -------------------------------------------------------- |
+| `TF_VAR_MAXTERVIEW_DATABASE_URL`               | yes      | Neon **direct** host + `?sslmode=require`, not `-pooler` |
+| `TF_VAR_MAXTERVIEW_CLERK_JWKS_URL`             | yes      | prod instance JWKS (backend verifies JWTs)               |
+| `TF_VAR_MAXTERVIEW_CLERK_DOMAIN`               | yes      | e.g. `https://clerk.seekeru.tech`                        |
+| `TF_VAR_MAXTERVIEW_LLM_BASE_URL` / `_MODEL` / `_API_KEY` | yes | empty `LLM_*` = silent STUB mode, so these fail at plan |
+| `TF_VAR_MAXTERVIEW_STRIPE_SECRET_KEY` / `_WEBHOOK_SECRET` / `_PRICE_ID` | no | unset → `/api/billing/*` answers 503      |
+| `TF_VAR_MAXTERVIEW_CLERK_AUDIENCE`             | no       | empty = accept tokens without an `aud` claim             |
+| `TF_VAR_MAXTERVIEW_MIGRATE_DATABASE_URL`       | no       | reserved (D12), migrate-role DSN for the migration Job   |
+
+Extra keys added later are picked up with no manifest change (`envFrom`), but a *malformed* key name is
+all-or-nothing: it blocks the whole pod. Rotate from Infisical + `make apply MOD=k3s`; never `kubectl apply`
+and never `secrets.tfvars`.
+
+> `infra/doks/` has **no** equivalent secret yet — applying `MOD=doks` with maxterview in the GitOps repo
+> would leave those pods in `CreateContainerConfigError` until a DO-side DB choice is made (Neon vs managed PG).
 
 ## AWS Module (Cloud)
 
@@ -226,6 +249,7 @@ DO **managed PG** for `doks`; **self-hosted StatefulSet** for `k3s` (see per-mod
 | `cloudflared-token`    | `default`  | Cloudflare Tunnel token for `cloudflared`      |
 | `ghcr-login`           | `default`  | Docker registry creds for GHCR                 |
 | `diagram-secrets`      | `default`  | API key + PostgreSQL connection string         |
+| `maxterview-secrets`   | `default`  | Neon DSN + Clerk/LLM/Stripe env, injected via `envFrom` |
 | `repo-secret`          | `argocd`   | ArgoCD repo credentials (private repo)         |
 | `postgres-credentials` | `database` | PostgreSQL password (k3s only)                 |
 
