@@ -73,6 +73,15 @@ variable "MAXTERVIEW_LLM_API_KEY" {
   default     = ""
 }
 
+# BYOK (app/byok.py): encrypts owner-supplied provider keys at rest. Required rather than optional
+# so a deploy cannot silently ship the settings card read-only. Durable by nature: rotating it
+# orphans every saved row (they degrade to the system LLM_* provider until re-saved), the app
+# itself boots either way.
+variable "MAXTERVIEW_BYOK_ENCRYPTION_KEY" {
+  description = "Fernet key encrypting per-owner BYOK provider keys (see BYOK.md)"
+  sensitive   = true
+}
+
 # Billing is optional at runtime: unset keys make /billing/* answer 503, nothing else breaks.
 variable "MAXTERVIEW_STRIPE_SECRET_KEY" {
   description = "Stripe secret key (prod or test mode)"
