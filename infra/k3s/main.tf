@@ -229,10 +229,19 @@ resource "kubernetes_secret" "diagram_secrets" {
   type = "Opaque"
 }
 
+# maxterview lives in its own namespace (NOT `default`, unlike diagram/portfolio): the env
+# dimension belongs in the namespace, so a staging namespace can be added later without the
+# `maxterview-secrets`/Deployment/Service name collisions `default` would cause.
+resource "kubernetes_namespace" "maxterview" {
+  metadata {
+    name = "maxterview"
+  }
+}
+
 resource "kubernetes_secret" "maxterview_secrets" {
   metadata {
     name      = "maxterview-secrets"
-    namespace = "default"
+    namespace = kubernetes_namespace.maxterview.metadata[0].name
   }
   # Keys are the app's env var names verbatim: the Deployment consumes this with `envFrom`.
   # UPPERCASE only — a lowercase key here would be an env var the app never reads.
