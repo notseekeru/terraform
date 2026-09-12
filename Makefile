@@ -1,6 +1,6 @@
 MOD ?=
 ENV ?= dev
-SECRETS_PATH ?= /terraform
+SECRETS_PATH ?= /consumers/terraform
 
 # R2 state-bucket creds are namespaced TF_VAR_R2_* so they never collide with the
 # AWS provider's native AWS_ACCESS_KEY_ID. The R2 s3 backend endpoint is delivered

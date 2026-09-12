@@ -60,7 +60,7 @@ try to duplicate it:
 2. Add the matching entry to `records` in `variables.tf`.
 3. Import it into state:
    ```bash
-   infisical run --path /terraform --env dev -- terraform -chdir=infra/cloudflare import \
+   infisical run --path /consumers/terraform --env dev -- terraform -chdir=infra/cloudflare import \
      'cloudflare_dns_record.this["<key>"]' '<ZONE_ID>/<RECORD_ID>'
    ```
 4. `make plan MOD=cloudflare` → should show no diff.
