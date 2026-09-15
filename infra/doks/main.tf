@@ -51,7 +51,7 @@ resource "helm_release" "argocd" {
   chart            = "argo-cd"
   namespace        = "argocd"
   create_namespace = true
-  version          = "7.7.0"
+  version          = "7.9.1"
   timeout          = 600
   depends_on       = [digitalocean_kubernetes_cluster.lab_cluster]
 }
