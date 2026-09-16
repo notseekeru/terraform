@@ -178,7 +178,7 @@ Deployment injects it with `envFrom`, so **each key must literally equal the env
 | `TF_VAR_MAXTERVIEW_CLERK_DOMAIN`                                        | yes      | e.g. `https://clerk.seekeru.tech`                        |
 | `TF_VAR_MAXTERVIEW_LLM_BASE_URL` / `_MODEL` / `_API_KEY`                | yes      | empty `LLM_*` = silent STUB mode, so these fail at plan  |
 | `TF_VAR_MAXTERVIEW_BYOK_ENCRYPTION_KEY`                                 | yes      | Fernet key for BYOK (`BYOK.md`); rotate = saved keys are orphaned |
-| `TF_VAR_MAXTERVIEW_STRIPE_SECRET_KEY` / `_WEBHOOK_SECRET` / `_PRICE_ID` | no       | unset → `/api/billing/*` answers 503                     |
+| `TF_VAR_MAXTERVIEW_PAYMONGO_SECRET_KEY` / `_WEBHOOK_SECRET`                  | no       | empty → `/api/billing/*` answers 503 (period mode needs only these two) |
 | `TF_VAR_MAXTERVIEW_CLERK_AUDIENCE`                                      | no       | empty = accept tokens without an `aud` claim             |
 | `TF_VAR_MAXTERVIEW_MIGRATE_DATABASE_URL`                                | no       | reserved (D12), migrate-role DSN for the migration Job   |
 
@@ -260,9 +260,9 @@ DO **managed PG** for `doks`; **self-hosted StatefulSet** for `k3s` (see per-mod
 | Secret Name            | Namespace  | Purpose                                                 |
 | ---------------------- | ---------- | ------------------------------------------------------- |
 | `cloudflared-token`    | `default`  | Cloudflare Tunnel token for `cloudflared`               |
-| `ghcr-login`           | `default`  | Docker registry creds for GHCR                          |
+| `ghcr-login`           | `default` + `maxterview` | Docker registry creds for GHCR                          |
 | `diagram-secrets`      | `default`  | API key + PostgreSQL connection string                  |
-| `maxterview-secrets`   | `default`  | Neon DSN + Clerk/LLM/Stripe env, injected via `envFrom` |
+| `maxterview-secrets`   | `maxterview` | Neon DSN + Clerk/LLM/BYOK/PayMongo env, injected via `envFrom` |
 | `repo-secret`          | `argocd`   | ArgoCD repo credentials (private repo)                  |
 | `postgres-credentials` | `database` | PostgreSQL password (k3s only)                          |
 

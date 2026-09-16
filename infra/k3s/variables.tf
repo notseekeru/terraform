@@ -82,21 +82,16 @@ variable "MAXTERVIEW_BYOK_ENCRYPTION_KEY" {
   sensitive   = true
 }
 
-# Billing is optional at runtime: unset keys make /billing/* answer 503, nothing else breaks.
-variable "MAXTERVIEW_STRIPE_SECRET_KEY" {
-  description = "Stripe secret key (prod or test mode)"
+# Billing is optional at runtime: unset keys make /api/billing/* answer 503, nothing else breaks.
+# Period mode (the shipping rail) needs only these two; `PAYMONGO_PLAN_ID` is subscription-mode only.
+variable "MAXTERVIEW_PAYMONGO_SECRET_KEY" {
+  description = "PayMongo secret key (sk_test_/sk_live_); empty => /api/billing/* 503s"
   sensitive   = true
   default     = ""
 }
 
-variable "MAXTERVIEW_STRIPE_WEBHOOK_SECRET" {
-  description = "Stripe webhook signing secret for the /api/billing/webhook endpoint"
-  sensitive   = true
-  default     = ""
-}
-
-variable "MAXTERVIEW_STRIPE_PRICE_ID" {
-  description = "Stripe price id for the premium monthly plan"
+variable "MAXTERVIEW_PAYMONGO_WEBHOOK_SECRET" {
+  description = "Signing secret of the PayMongo webhook endpoint registered for /api/billing/webhook"
   sensitive   = true
   default     = ""
 }
