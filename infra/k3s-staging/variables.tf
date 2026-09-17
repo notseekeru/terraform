@@ -25,6 +25,17 @@ variable "MAXTERVIEW_MIGRATE_DATABASE_URL" {
   default     = ""
 }
 
+variable "GITHUB_USERNAME" {
+  description = "GitHub username for GHCR authentication"
+  sensitive   = false
+  default     = "notseekeru"
+}
+
+variable "GITHUB_PAT" {
+  description = "GitHub PAT with read:packages, for the namespace-local ghcr-login pull secret"
+  sensitive   = true
+}
+
 variable "MAXTERVIEW_CLERK_DOMAIN" {
   description = "Clerk instance domain for staging (the DEVELOPMENT instance, not clerk.seekeru.tech)"
   sensitive   = true

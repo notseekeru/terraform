@@ -1,5 +1,6 @@
 # Staging env-scoped resources: the namespace + the Secret the staging Deployment consumes with
-# `envFrom` (D11/D13 — one cluster, one namespace per durable env, staging on its own Neon project).
+# `envFrom` + the GHCR pull secret (D11/D13 — one cluster, one namespace per durable env, staging on
+# its own Neon project).
 #
 # Run with: make plan MOD=k3s-staging ENV=staging && make apply MOD=k3s-staging ENV=staging
 # `ENV=staging` selects the Infisical environment, which inherits every shared value from `prod`
@@ -36,4 +37,27 @@ resource "kubernetes_secret" "staging_secrets" {
     PAYMONGO_WEBHOOK_SECRET = var.MAXTERVIEW_PAYMONGO_WEBHOOK_SECRET
   }
   type = "Opaque"
+}
+
+# `imagePullSecrets` are NAMESPACE-LOCAL and the GHCR packages are private, so the copy in
+# `default`/`maxterview` (infra/k3s) does not reach staging pods: without this the backend,
+# frontend and the PreSync migrate Job all sit in ImagePullBackOff. The GHCR PAT is inherited
+# from `prod`, like the other shared values.
+resource "kubernetes_secret" "ghcr_login" {
+  metadata {
+    name      = "ghcr-login"
+    namespace = kubernetes_namespace.staging.metadata[0].name
+  }
+  type = "kubernetes.io/dockerconfigjson"
+  data = {
+    ".dockerconfigjson" = jsonencode({
+      auths = {
+        "ghcr.io" = {
+          username = var.GITHUB_USERNAME
+          password = var.GITHUB_PAT
+          auth     = base64encode("${var.GITHUB_USERNAME}:${var.GITHUB_PAT}")
+        }
+      }
+    })
+  }
 }
