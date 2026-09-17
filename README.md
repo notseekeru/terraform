@@ -190,21 +190,27 @@ and never `secrets.tfvars`.
 ### maxterview staging (`MOD=k3s-staging`)
 
 `infra/k3s-staging` is a **separate root module + state** (`terraform/k3s-staging/terraform.tfstate`) holding
-only the env-scoped objects: namespace `maxterview-staging` + `maxterview-staging-secrets`. The cluster itself
-(argocd, ingress-nginx, the `maxterview` namespace) stays owned by `infra/k3s`, so a staging apply cannot
-re-plan prod's cluster resources and vice versa.
+only the env-scoped objects: namespace `maxterview-staging`, `maxterview-staging-secrets`, and the
+namespace-local `ghcr-login` pull secret (GHCR packages are private and `imagePullSecrets` never cross
+namespaces, so without that copy every pod including the PreSync migrate Job sits in ImagePullBackOff).
+The cluster itself (argocd, ingress-nginx, the `maxterview` namespace) stays owned by `infra/k3s`, so a
+staging apply cannot re-plan prod's cluster resources and vice versa.
 
 ```bash
 make init MOD=k3s-staging ENV=staging && make plan MOD=k3s-staging ENV=staging && make apply MOD=k3s-staging ENV=staging
 ```
 
-`ENV=staging` selects the Infisical environment, which **inherits** the shared values from `prod` (R2 backend
-creds, Cloudflare token, the LLM/qwen pair, the BYOK key) and must override the env-specific ones:
-`TF_VAR_MAXTERVIEW_DATABASE_URL` (staging Neon DSN), `TF_VAR_MAXTERVIEW_CLERK_DOMAIN`/`_CLERK_JWKS_URL` (the
-Development instance, not `clerk.seekeru.tech`) and the PayMongo **test** keys (empty is fine — staging just
-503s `/api/billing/*`). Two plan-time guards are load-bearing: an empty `DATABASE_URL`/`LLM_*` fails the plan,
-and the prod Neon endpoint `ep-tiny-hall-b3e0wb3g` is **refused** — otherwise inheritance would quietly point
-staging pods at the production database.
+`ENV=staging` selects the Infisical environment. Inheritance there is **per-key references**
+(`KEY=${prod.consumers.terraform.KEY}`), not the dashboard's env-inheritance toggle — that toggle does not
+reach the API/CLI, so a staging run with no references injects nothing. Prod's ~24 keys are mirrored as
+references and exactly four are **local overrides**: `TF_VAR_MAXTERVIEW_DATABASE_URL` (staging Neon direct
+host), `TF_VAR_MAXTERVIEW_CLERK_DOMAIN`/`_CLERK_JWKS_URL` (the Development instance, not `clerk.seekeru.tech`)
+and the PayMongo **test** pair (`sk_test_`/`whsk_` — the inherited prod values are live keys). Adding a key to
+prod does **not** propagate; regenerate the refs (see the repo-operator skill's staging section for the loop)
+and never "revert to inherited" on those overrides. Two plan-time guards are load-bearing: an empty
+`DATABASE_URL`/`LLM_*` fails the plan, and the prod Neon endpoint `ep-tiny-hall-b3e0wb3g` is **refused** —
+otherwise inheritance would quietly point staging pods at the production database. `infra/k3s` carries the
+mirror guard refusing the staging endpoint, so a `MOD` typo cannot rewrite prod's secrets either.
 
 > `infra/doks/` has **no** equivalent secret yet — applying `MOD=doks` with maxterview in the GitOps repo
 > would leave those pods in `CreateContainerConfigError` until a DO-side DB choice is made (Neon vs managed PG).
