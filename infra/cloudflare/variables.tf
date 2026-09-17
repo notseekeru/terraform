@@ -58,6 +58,16 @@ variable "records" {
       content  = "7bbbb5d4-0fbc-469d-bbfe-a1de34559a3d.cfargotunnel.com"
       proxied  = true
     }
+    # Staging shares the tunnel; the hostname is FIRST-level on purpose — Universal SSL covers
+    # `<zone>` + `*.<zone>` only, so `staging.maxterview.seekeru.tech` would serve an invalid
+    # certificate (needs ACM/Total TLS).
+    maxterview_staging = {
+      zone_key = "seekeru"
+      type     = "CNAME"
+      name     = "maxterview-staging"
+      content  = "7bbbb5d4-0fbc-469d-bbfe-a1de34559a3d.cfargotunnel.com"
+      proxied  = true
+    }
   }
 }
 
