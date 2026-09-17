@@ -221,7 +221,10 @@ resource "kubernetes_secret" "ghcr_credentials" {
 # from the one above so the existing `default` secret is never recreated; extend the list as
 # namespaces appear (staging).
 resource "kubernetes_secret" "ghcr_credentials_app_ns" {
-  for_each = toset([kubernetes_namespace.maxterview.metadata[0].name])
+  for_each = toset([
+    kubernetes_namespace.portfolio.metadata[0].name,
+    kubernetes_namespace.maxterview.metadata[0].name,
+  ])
 
   metadata {
     name      = "ghcr-login"
@@ -255,9 +258,15 @@ resource "kubernetes_secret" "diagram_secrets" {
   type = "Opaque"
 }
 
-# maxterview lives in its own namespace (NOT `default`, unlike diagram/portfolio): the env
-# dimension belongs in the namespace, so a staging namespace can be added later without the
-# `maxterview-secrets`/Deployment/Service name collisions `default` would cause.
+# Apps get their own namespace (`default` is infra-only: tunnel, diagram) so same-named
+# Secrets/Deployments/Services cannot collide across apps and a new env never re-plans prod.
+# `ghcr_credentials_app_ns` fans the namespace-local pull secret out to each.
+resource "kubernetes_namespace" "portfolio" {
+  metadata {
+    name = "portfolio"
+  }
+}
+
 resource "kubernetes_namespace" "maxterview" {
   metadata {
     name = "maxterview"
