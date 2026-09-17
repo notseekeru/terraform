@@ -57,14 +57,26 @@ variable "MAXTERVIEW_CLERK_AUDIENCE" {
 
 # Required on purpose: empty LLM_* silently boots the backend in STUB mode (no model calls),
 # which looks like a healthy deploy while every interview is fake. Fail at plan time instead.
+# The `validation` blocks are load-bearing: a *set but empty* TF_VAR (Infisical holds an empty
+# key) satisfies "required", so without them an empty value wipes the live LLM_* and stubs prod.
 variable "MAXTERVIEW_LLM_BASE_URL" {
   description = "OpenAI-compatible base URL for prod (e.g. https://api.deepseek.com/v1)"
   sensitive   = true
+
+  validation {
+    condition     = length(trimspace(var.MAXTERVIEW_LLM_BASE_URL)) > 0
+    error_message = "LLM_BASE_URL must not be empty: an empty value silently boots the backend in STUB_MODE (fake interviews)."
+  }
 }
 
 variable "MAXTERVIEW_LLM_MODEL" {
   description = "Model id used as interviewer + feedback formatter"
   sensitive   = true
+
+  validation {
+    condition     = length(trimspace(var.MAXTERVIEW_LLM_MODEL)) > 0
+    error_message = "LLM_MODEL must not be empty: an empty value silently boots the backend in STUB_MODE (fake interviews)."
+  }
 }
 
 variable "MAXTERVIEW_LLM_API_KEY" {

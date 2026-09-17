@@ -176,9 +176,10 @@ Deployment injects it with `envFrom`, so **each key must literally equal the env
 | `TF_VAR_MAXTERVIEW_DATABASE_URL`                                        | yes      | Neon **direct** host + `?sslmode=require`, not `-pooler` |
 | `TF_VAR_MAXTERVIEW_CLERK_JWKS_URL`                                      | yes      | prod instance JWKS (backend verifies JWTs)               |
 | `TF_VAR_MAXTERVIEW_CLERK_DOMAIN`                                        | yes      | e.g. `https://clerk.seekeru.tech`                        |
-| `TF_VAR_MAXTERVIEW_LLM_BASE_URL` / `_MODEL` / `_API_KEY`                | yes      | empty `LLM_*` = silent STUB mode, so these fail at plan  |
+| `TF_VAR_MAXTERVIEW_LLM_BASE_URL` / `_MODEL`                            | yes      | empty = silent STUB mode (fake interviews); a `validation` block now fails the plan |
+| `TF_VAR_MAXTERVIEW_LLM_API_KEY`                                         | no       | empty is correct for the unauthenticated self-hosted endpoint |
 | `TF_VAR_MAXTERVIEW_BYOK_ENCRYPTION_KEY`                                 | yes      | Fernet key for BYOK (`BYOK.md`); rotate = saved keys are orphaned |
-| `TF_VAR_MAXTERVIEW_PAYMONGO_SECRET_KEY` / `_WEBHOOK_SECRET`                  | no       | empty → `/api/billing/*` answers 503 (period mode needs only these two) |
+| `TF_VAR_MAXTERVIEW_PAYMONGO_SECRET_KEY` / `_WEBHOOK_SECRET`                  | no       | empty → `/api/billing/*` answers 503 (period mode needs only these two). `_WEBHOOK_SECRET` is the registered endpoint's `whsk_…` — trailing whitespace/newlines break the HMAC |
 | `TF_VAR_MAXTERVIEW_CLERK_AUDIENCE`                                      | no       | empty = accept tokens without an `aud` claim             |
 | `TF_VAR_MAXTERVIEW_MIGRATE_DATABASE_URL`                                | no       | reserved (D12), migrate-role DSN for the migration Job   |
 
