@@ -215,14 +215,35 @@ resource "kubernetes_secret" "ghcr_credentials" {
   }
 }
 
+# Apps get their own namespace (`default` is infra-only: the tunnel) so same-named
+# Secrets/Deployments/Services cannot collide across apps and a new env never re-plans prod.
+resource "kubernetes_namespace" "portfolio" {
+  metadata {
+    name = "portfolio"
+  }
+}
+
+resource "kubernetes_namespace" "diagram" {
+  metadata {
+    name = "diagram"
+  }
+}
+
+resource "kubernetes_namespace" "maxterview" {
+  metadata {
+    name = "maxterview"
+  }
+}
+
 # The same pull secret in each app namespace: `imagePullSecrets` are NAMESPACE-LOCAL, so a workload
-# in `maxterview` cannot see the copy in `default` — without this every pod (and the PreSync migrate
-# Job, which then aborts the whole sync) sits in ImagePullBackOff. Deliberately a separate resource
-# from the one above so the existing `default` secret is never recreated; extend the list as
-# namespaces appear (staging).
+# in an app namespace cannot see the copy in `default` — without this every pod (and the PreSync
+# migrate Job, which then aborts the whole sync) sits in ImagePullBackOff. Deliberately a separate
+# resource from the one above so the existing `default` secret is never recreated; extend the list
+# as namespaces appear (staging).
 resource "kubernetes_secret" "ghcr_credentials_app_ns" {
   for_each = toset([
     kubernetes_namespace.portfolio.metadata[0].name,
+    kubernetes_namespace.diagram.metadata[0].name,
     kubernetes_namespace.maxterview.metadata[0].name,
   ])
 
@@ -249,28 +270,13 @@ resource "kubernetes_secret" "diagram_secrets" {
 
   metadata {
     name      = "diagram-secrets"
-    namespace = "default"
+    namespace = kubernetes_namespace.diagram.metadata[0].name
   }
   data = {
     api_key      = var.DIAGRAM_API_KEY
     database_url = "postgresql://diagram:${var.POSTGRES_PASSWORD}@postgres.database.svc.cluster.local:5432/diagramdb"
   }
   type = "Opaque"
-}
-
-# Apps get their own namespace (`default` is infra-only: tunnel, diagram) so same-named
-# Secrets/Deployments/Services cannot collide across apps and a new env never re-plans prod.
-# `ghcr_credentials_app_ns` fans the namespace-local pull secret out to each.
-resource "kubernetes_namespace" "portfolio" {
-  metadata {
-    name = "portfolio"
-  }
-}
-
-resource "kubernetes_namespace" "maxterview" {
-  metadata {
-    name = "maxterview"
-  }
 }
 
 resource "kubernetes_secret" "maxterview_secrets" {

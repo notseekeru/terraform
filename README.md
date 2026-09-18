@@ -286,8 +286,8 @@ DO **managed PG** for `doks`; **self-hosted StatefulSet** for `k3s` (see per-mod
 | Secret Name            | Namespace  | Purpose                                                 |
 | ---------------------- | ---------- | ------------------------------------------------------- |
 | `cloudflared-token`    | `default`  | Cloudflare Tunnel token for `cloudflared`               |
-| `ghcr-login`           | `default` + `portfolio` + `maxterview` | Docker registry creds for GHCR           |
-| `diagram-secrets`      | `default`  | API key + PostgreSQL connection string                  |
+| `ghcr-login`           | `default` + `portfolio` + `diagram` + `maxterview` | Docker registry creds for GHCR           |
+| `diagram-secrets`      | `diagram`  | API key + PostgreSQL connection string                  |
 | `maxterview-secrets`   | `maxterview` | Neon DSN + Clerk/LLM/BYOK/PayMongo env, injected via `envFrom` |
 | `repo-secret`          | `argocd`   | ArgoCD repo credentials (private repo)                  |
 | `postgres-credentials` | `database` | PostgreSQL password (k3s only)                          |
