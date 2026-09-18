@@ -84,7 +84,7 @@ routing AWS bucket resources to R2 — do not try to remove that var from mutate
 3. `infra/aws/provider.tf` pins `endpoints { s3 = "https://s3.<region>.amazonaws.com" }` —
    this pin is the **sole** thing that keeps real `aws_s3_bucket` / `aws_s3_bucket_policy`
    calls resolving to AWS while the R2 endpoint var is present.
-4. Non-AWS modules (`cloudflare`, `doks`, `k3s`) carry the same inline backend block and
+4. Non-AWS modules (`cloudflare`, `k3s`) carry the same inline backend block and
    need no provider pin (no AWS provider); they just run with the endpoint var present.
 5. R2 creds stay under `TF_VAR_R2_*` and real AWS creds under `AWS_ACCESS_KEY_ID`/
    `AWS_SECRET_ACCESS_KEY`; never move R2 creds to a bare `AWS_*` name.

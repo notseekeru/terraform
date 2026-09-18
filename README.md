@@ -1,7 +1,7 @@
 # Terraform — Personal Cloud Infrastructure
 
 > Infrastructure-as-Code for my personal cloud environment.
-> **Providers:** DigitalOcean / Cloudflare (R2 + DNS) / AWS · **Provisioner:** Terraform · **Orchestrator:** ArgoCD
+> **Providers:** Cloudflare (R2 + DNS) / AWS · **Provisioner:** Terraform · **Orchestrator:** ArgoCD
 > **AI usage is encouraged** — ask an agent to explain, audit, or change infra. Every change still ends with a human-reviewed `plan`; AI is a helper, not a dependency.
 
 ---
@@ -11,7 +11,6 @@
 | Requirement            | Details                                                                                 |
 | ---------------------- | --------------------------------------------------------------------------------------- |
 | **Terraform**          | `>= 1.0` ([install](https://developer.hashicorp.com/terraform/install))                 |
-| **DigitalOcean Token** | Fine-grained PAT with write scope (`DO_TOKEN`) — only for `doks`                        |
 | **Cloudflare token**   | API token `Zone → DNS → Edit` (`TF_VAR_CLOUDFLARE_API_TOKEN`) — for `cloudflare` module |
 | **k3s**                | Existing k3s cluster with `~/.kube/config` — see [K3s Module](#k3s-module-local)        |
 | **Nix / direnv**       | Optional: `nix develop` shell; `direnv` auto-loads it, pulls, exports `KUBECONFIG`      |
@@ -26,7 +25,6 @@ State lives in a **Cloudflare R2 bucket** (`s3` backend) under a per-module key 
 
 | Module       | State key                                | Backend |
 | ------------ | ---------------------------------------- | ------- |
-| `doks`       | `terraform/doks/terraform.tfstate`       | s3      |
 | `k3s`        | `terraform/k3s/terraform.tfstate`        | s3      |
 | `aws`        | `terraform/aws/terraform.tfstate`        | s3      |
 | `cloudflare` | `terraform/cloudflare/terraform.tfstate` | s3      |
@@ -76,7 +74,7 @@ The repo is operator-reproducible, not fresh-clone-self-contained. Before init/p
 1. **Infisical identity** — copy `~/.config/infisical/` from a working device (or `infisical login`) plus this workspace's `.infisical.json` (`/terraform` dev).
 2. **Secrets populated** — the Infisical project must hold the `TF_VAR_*`/`AWS_*` vars each module's `variables.tf` needs, incl. the R2 set (`TF_VAR_R2_*`) and ambient `AWS_ENDPOINT_URL_S3`.
 3. **R2 state bucket live** — creds must still point at the existing `terraform-state` bucket.
-4. **`gitops/` repo checked out at `../gitops/`** — `doks`/`k3s` read `app.yaml` via `file()` at apply time.
+4. **`gitops/` repo checked out at `../gitops/`** — `k3s` reads `app.yaml` via `file()` at apply time.
 5. **ArgoCD/GHCR reachable** — the PAT in Infisical must still be valid for the private `gitops` repo.
 
 Then `make init MOD=<m>` re-fetches providers. `.terraform.lock.hcl` and local `*.tfstate` are gitignored, so first init on a machine re-resolves against `~>` floors (a minor drift vector).
@@ -88,8 +86,8 @@ Then `make init MOD=<m>` re-fetches providers. `.terraform.lock.hcl` and local `
 ```
 terraform/
 ├── infra/                   # Terraform root modules
-│   ├── doks/                #   state #1 — DOKS cluster (cloud)
-│   ├── k3s/                 #   state #2 — local k3s cluster (no DO)
+│   ├── k3s/                 #   state #1 — k3s cluster (the deployment target)
+│   ├── k3s-staging/         #   state #2 — env-scoped staging objects
 │   ├── aws/                 #   state #3 — AWS sandbox (see AWS.md)
 │   └── cloudflare/          #   state #4 — Cloudflare DNS + zone settings
 ├── Makefile                 # Workflow targets (accepts MOD=, ENV=, SECRETS_PATH=)
@@ -105,7 +103,7 @@ Each module keeps its own `versions.tf`, `provider.tf`, `variables.tf`, `main.tf
 
 ## Makefile Workflow
 
-Module targets take `MOD=doks|k3s|aws|cloudflare`; the `infra/` prefix and Infisical flow are baked in. Backend-facing targets (`init`, `upgradeinit`, `reconfigure`, `migrate`) pass `backend_config` through `/bin/sh -c` so the `$TF_VAR_R2_*` refs expand (Infisical execs directly and wouldn't expand them). The R2 endpoint is the ambient `AWS_ENDPOINT_URL_S3` present on all targets. Backend/`aws`-provider separation is handled by the provider pin — not an env `unset`. `nuke-list` is account-scoped (ignores `MOD`) and runs from the repo root.
+Module targets take `MOD=k3s|k3s-staging|aws|cloudflare`; the `infra/` prefix and Infisical flow are baked in. Backend-facing targets (`init`, `upgradeinit`, `reconfigure`, `migrate`) pass `backend_config` through `/bin/sh -c` so the `$TF_VAR_R2_*` refs expand (Infisical execs directly and wouldn't expand them). The R2 endpoint is the ambient `AWS_ENDPOINT_URL_S3` present on all targets. Backend/`aws`-provider separation is handled by the provider pin — not an env `unset`. `nuke-list` is account-scoped (ignores `MOD`) and runs from the repo root.
 
 | Target             | Description                                                |
 | ------------------ | ---------------------------------------------------------- |
@@ -128,30 +126,12 @@ make plan MOD=cloudflare && make apply MOD=cloudflare
 make migrate MOD=k3s    # one-time local→R2 state copy
 ```
 
-## DOKS Cluster (Cloud)
-
-| Attribute     | Value                | Notes                   |
-| ------------- | -------------------- | ----------------------- |
-| **Name**      | `lab-cluster`        | Singleton — one cluster |
-| **Region**    | `var.default_region` | Inherits `sgp1` default |
-| **Version**   | `1.34.8-do.2`        | DO-managed K8s          |
-| **Node pool** | 3 × `s-2vcpu-2gb`    | 6 GB total              |
-
-kubeconfig is written to `~/kubeconfig` at apply time:
-
-```bash
-export KUBECONFIG=~/kubeconfig && kubectl get nodes
-```
-
-A DO managed PostgreSQL 16 (`db-s-1vcpu-1gb`) lives in the cluster VPC; creds go into `diagram-secrets` with `sslmode=no-verify` for private connectivity.
-
 ## K3s Module (Local)
 
-For local/edge dev. Runs against an existing k3s cluster via `~/.kube/config`.
+Runs against an existing k3s cluster via `~/.kube/config`. This is the deployment target.
 
 | Aspect                | Detail                                                                            |
 | --------------------- | --------------------------------------------------------------------------------- |
-| **No DO dependency**  | Providers read local kubeconfig                                                   |
 | **Database**          | Self-hosted PG 16 StatefulSet, `database` ns, 5Gi PVC on `local-path`             |
 | **Connection string** | `postgresql://diagram:${pass}@postgres.database.svc.cluster.local:5432/diagramdb` |
 
@@ -212,9 +192,6 @@ and never "revert to inherited" on those overrides. Two plan-time guards are loa
 otherwise inheritance would quietly point staging pods at the production database. `infra/k3s` carries the
 mirror guard refusing the staging endpoint, so a `MOD` typo cannot rewrite prod's secrets either.
 
-> `infra/doks/` has **no** equivalent secret yet — applying `MOD=doks` with maxterview in the GitOps repo
-> would leave those pods in `CreateContainerConfigError` until a DO-side DB choice is made (Neon vs managed PG).
-
 Generate the BYOK key once, then paste it into Infisical as `TF_VAR_MAXTERVIEW_BYOK_ENCRYPTION_KEY`:
 
 ```bash
@@ -262,7 +239,7 @@ Imported into state first (adopt, don't overwrite), now tracked by Terraform.
 
 Installed via `argoproj/argo-helm` (chart `7.7.0`) in the `argocd` namespace with K8s secrets and a root Application CR.
 
-**Bootstrap:** Terraform applies Helm charts + secrets → applies the root Application via the `kubectl` provider (the **only** direct manifest) → that root App syncs the rest from the GitOps repo. Manifest defaults to `${path.module}/../../../gitops/app.yaml` (resolved at plan time); override via `app_yaml_path` (`infra/{k3s,doks}/variables.tf`).
+**Bootstrap:** Terraform applies Helm charts + secrets → applies the root Application via the `kubectl` provider (the **only** direct manifest) → that root App syncs the rest from the GitOps repo. Manifest defaults to `${path.module}/../../../gitops/app.yaml` (resolved at plan time); override via `app_yaml_path` (`infra/k3s/variables.tf`).
 
 **CLI setup:**
 
@@ -274,7 +251,7 @@ PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.d
 
 ## Databases
 
-DO **managed PG** for `doks`; **self-hosted StatefulSet** for `k3s` (see per-module sections). Connection string + API key are injected into the `diagram-secrets` K8s secret consumed by app pods.
+**Self-hosted PG 16 StatefulSet** in the `database` namespace for `k3s`. Connection string + API key are injected into the `diagram-secrets` K8s secret consumed by app pods.
 
 **Rotation / incident runbooks:**
 
@@ -304,7 +281,6 @@ direnv allow       # or: auto-load on cd (also pulls + exports KUBECONFIG)
 | `terraform` | Infrastructure provisioning |
 | `kubectl`   | Kubernetes management       |
 | `argocd`    | ArgoCD CLI                  |
-| `doctl`     | DigitalOcean CLI (fallback) |
 | `infisical` | Secret management CLI       |
 | `aws-nuke`  | Last-resort account cleanup |
 
@@ -337,7 +313,6 @@ So a consumer folder must hold every key its target needs; `*_source` folders ar
 ## Cleanup
 
 ```bash
-make destroy MOD=doks
 make destroy MOD=k3s
 make destroy MOD=aws
 ```

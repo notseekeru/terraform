@@ -19,7 +19,7 @@ backend_config = -backend-config="bucket=$$TF_VAR_R2_BUCKET" \
 # run (init AND plan/apply/refresh) to reach R2 for remote state. Do NOT unset it.
 # The ONLY thing that keeps the aws provider off R2 while that var is present is the
 # endpoints.s3 pin to real AWS S3 in infra/aws/provider.tf. Non-AWS modules (k3s,
-# cloudflare, doks) have no such provider and simply run with the var present.
+# cloudflare) have no such provider and simply run with the var present.
 
 .PHONY: fmt validate init upgradeinit reconfigure plan apply destroy migrate dump secrets verify-db-auth nuke-list
 
