@@ -239,7 +239,7 @@ resource "kubernetes_namespace" "maxterview" {
 # in an app namespace cannot see the copy in `default` — without this every pod (and the PreSync
 # migrate Job, which then aborts the whole sync) sits in ImagePullBackOff. Deliberately a separate
 # resource from the one above so the existing `default` secret is never recreated; extend the list
-# as namespaces appear (staging).
+# as namespaces appear.
 resource "kubernetes_secret" "ghcr_credentials_app_ns" {
   for_each = toset([
     kubernetes_namespace.portfolio.metadata[0].name,

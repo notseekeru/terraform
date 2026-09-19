@@ -87,9 +87,8 @@ Then `make init MOD=<m>` re-fetches providers. `.terraform.lock.hcl` and local `
 terraform/
 ├── infra/                   # Terraform root modules
 │   ├── k3s/                 #   state #1 — k3s cluster (the deployment target)
-│   ├── k3s-staging/         #   state #2 — env-scoped staging objects
-│   ├── aws/                 #   state #3 — AWS sandbox (see AWS.md)
-│   └── cloudflare/          #   state #4 — Cloudflare DNS + zone settings
+│   ├── aws/                 #   state #2 — AWS sandbox (see AWS.md)
+│   └── cloudflare/          #   state #3 — Cloudflare DNS + zone settings
 ├── Makefile                 # Workflow targets (accepts MOD=, ENV=, SECRETS_PATH=)
 ├── flake.nix                # Nix dev shell definition
 ├── .envrc                   # direnv: auto-nix + git pull + KUBECONFIG
@@ -103,7 +102,7 @@ Each module keeps its own `versions.tf`, `provider.tf`, `variables.tf`, `main.tf
 
 ## Makefile Workflow
 
-Module targets take `MOD=k3s|k3s-staging|aws|cloudflare`; the `infra/` prefix and Infisical flow are baked in. Backend-facing targets (`init`, `upgradeinit`, `reconfigure`, `migrate`) pass `backend_config` through `/bin/sh -c` so the `$TF_VAR_R2_*` refs expand (Infisical execs directly and wouldn't expand them). The R2 endpoint is the ambient `AWS_ENDPOINT_URL_S3` present on all targets. Backend/`aws`-provider separation is handled by the provider pin — not an env `unset`. `nuke-list` is account-scoped (ignores `MOD`) and runs from the repo root.
+Module targets take `MOD=k3s|aws|cloudflare`; the `infra/` prefix and Infisical flow are baked in. Backend-facing targets (`init`, `upgradeinit`, `reconfigure`, `migrate`) pass `backend_config` through `/bin/sh -c` so the `$TF_VAR_R2_*` refs expand (Infisical execs directly and wouldn't expand them). The R2 endpoint is the ambient `AWS_ENDPOINT_URL_S3` present on all targets. Backend/`aws`-provider separation is handled by the provider pin — not an env `unset`. `nuke-list` is account-scoped (ignores `MOD`) and runs from the repo root.
 
 | Target             | Description                                                |
 | ------------------ | ---------------------------------------------------------- |
@@ -167,31 +166,6 @@ Extra keys added later are picked up with no manifest change (`envFrom`), but a 
 all-or-nothing: it blocks the whole pod. Rotate from Infisical + `make apply MOD=k3s`; never `kubectl apply`
 and never `secrets.tfvars`.
 
-### maxterview staging (`MOD=k3s-staging`)
-
-`infra/k3s-staging` is a **separate root module + state** (`terraform/k3s-staging/terraform.tfstate`) holding
-only the env-scoped objects: namespace `maxterview-staging`, `maxterview-staging-secrets`, and the
-namespace-local `ghcr-login` pull secret (GHCR packages are private and `imagePullSecrets` never cross
-namespaces, so without that copy every pod including the PreSync migrate Job sits in ImagePullBackOff).
-The cluster itself (argocd, ingress-nginx, the `maxterview` namespace) stays owned by `infra/k3s`, so a
-staging apply cannot re-plan prod's cluster resources and vice versa.
-
-```bash
-make init MOD=k3s-staging ENV=staging && make plan MOD=k3s-staging ENV=staging && make apply MOD=k3s-staging ENV=staging
-```
-
-`ENV=staging` selects the Infisical environment. Inheritance there is **per-key references**
-(`KEY=${prod.consumers.terraform.KEY}`), not the dashboard's env-inheritance toggle — that toggle does not
-reach the API/CLI, so a staging run with no references injects nothing. Prod's ~24 keys are mirrored as
-references and exactly four are **local overrides**: `TF_VAR_MAXTERVIEW_DATABASE_URL` (staging Neon direct
-host), `TF_VAR_MAXTERVIEW_CLERK_DOMAIN`/`_CLERK_JWKS_URL` (the Development instance, not `clerk.seekeru.tech`)
-and the PayMongo **test** pair (`sk_test_`/`whsk_` — the inherited prod values are live keys). Adding a key to
-prod does **not** propagate; regenerate the refs (see the repo-operator skill's staging section for the loop)
-and never "revert to inherited" on those overrides. Two plan-time guards are load-bearing: an empty
-`DATABASE_URL`/`LLM_*` fails the plan, and the prod Neon endpoint `ep-tiny-hall-b3e0wb3g` is **refused** —
-otherwise inheritance would quietly point staging pods at the production database. `infra/k3s` carries the
-mirror guard refusing the staging endpoint, so a `MOD` typo cannot rewrite prod's secrets either.
-
 Generate the BYOK key once, then paste it into Infisical as `TF_VAR_MAXTERVIEW_BYOK_ENCRYPTION_KEY`:
 
 ```bash
@@ -204,7 +178,7 @@ card renders read-only and writes answer 503 — so rotation is a `make apply MO
 
 ## AWS Module (Cloud)
 
-`infra/aws/` (state #3) is an AWS sandbox: VPC + public subnets, an auto-scaling EC2 web tier behind an ALB, single-AZ RDS PostgreSQL, and a private S3 bucket served via CloudFront (OAC). State still lives in R2.
+`infra/aws/` (state #2) is an AWS sandbox: VPC + public subnets, an auto-scaling EC2 web tier behind an ALB, single-AZ RDS PostgreSQL, and a private S3 bucket served via CloudFront (OAC). State still lives in R2.
 
 **Credentials** (Infisical): `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `TF_VAR_ALERT_EMAIL`, and the `TF_VAR_R2_*` backend pair.
 
@@ -218,7 +192,7 @@ Notable wiring:
 
 ## Cloudflare Module (DNS)
 
-`infra/cloudflare/` (state #4) makes tunnel-facing DNS declarative. Provider `cloudflare ~> 5.0`; state in R2.
+`infra/cloudflare/` (state #3) makes tunnel-facing DNS declarative. Provider `cloudflare ~> 5.0`; state in R2.
 
 **Scope** — the 4 tunnel hostnames on `seekeru.tech` (managed declaratively):
 

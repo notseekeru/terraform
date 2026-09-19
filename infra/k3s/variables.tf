@@ -37,14 +37,6 @@ variable "POSTGRES_PASSWORD" {
 variable "MAXTERVIEW_DATABASE_URL" {
   description = "Neon direct-host DSN (sslmode=require, NOT the -pooler host) for the maxterview backend"
   sensitive   = true
-
-  # Mirror of the staging module's guard, pointing the other way: `make apply MOD=k3s ENV=staging`
-  # (one character of typo in MOD) would otherwise plan prod's `maxterview-secrets` onto the staging
-  # project's DSN and point production at the rehearsal database.
-  validation {
-    condition     = !strcontains(var.MAXTERVIEW_DATABASE_URL, "ep-withered-math-b39ujecm")
-    error_message = "Refusing the staging Neon endpoint (ep-withered-math-b39ujecm): this module owns prod's state and prod's DSN only."
-  }
 }
 
 variable "MAXTERVIEW_CLERK_JWKS_URL" {
