@@ -87,7 +87,6 @@ resource "kubernetes_stateful_set_v1" "postgres" {
         }
       }
       spec {
-        # No security_context override: postgres:16-alpine defaults to uid 999.
         # Explicit fs_group/run_as_user caused chmod denial on local-path PV mounts.
         container {
           name              = "postgres"
@@ -117,7 +116,6 @@ resource "kubernetes_stateful_set_v1" "postgres" {
           # PG18+ image stores data under /var/lib/postgresql/<major>/docker and
           # refuses a flat mount at /var/lib/postgresql/data (docker-library/postgres#1259).
           # Mount the volume at the parent so the entrypoint can initdb into its
-          # versioned subdir (pg_upgrade-compatible layout).
           volume_mount {
             name       = "data"
             mount_path = "/var/lib/postgresql"
@@ -298,6 +296,23 @@ resource "kubernetes_secret" "maxterview_secrets" {
     BYOK_ENCRYPTION_KEY     = var.MAXTERVIEW_BYOK_ENCRYPTION_KEY
     PAYMONGO_SECRET_KEY     = var.MAXTERVIEW_PAYMONGO_SECRET_KEY
     PAYMONGO_WEBHOOK_SECRET = var.MAXTERVIEW_PAYMONGO_WEBHOOK_SECRET
+  }
+  type = "Opaque"
+}
+
+# Alloy's write credential for Grafana Cloud Loki. Deliberately NOT part of `maxterview-secrets`:
+# the app never holds a telemetry write token, and Alloy reads these three keys with `valueFrom`
+# rather than `envFrom`, so a malformed key here cannot block the backend pod.
+resource "kubernetes_secret" "maxterview_logs" {
+  metadata {
+    name      = "maxterview-logs"
+    namespace = kubernetes_namespace.maxterview.metadata[0].name
+  }
+  # Keys are the names the Alloy config reads via sys.env().
+  data = {
+    LOKI_URL   = var.MAXTERVIEW_LOKI_URL
+    LOKI_USER  = var.MAXTERVIEW_LOKI_USER
+    LOKI_TOKEN = var.MAXTERVIEW_LOKI_TOKEN
   }
   type = "Opaque"
 }
