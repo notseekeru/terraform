@@ -14,9 +14,10 @@ The best code is the code never written. Efficiency is paramount.
 4. **Minimalism:** No unrequested abstractions, no boilerplate. Deletion over addition.
 5. **Validation:** For non-trivial logic, include exactly one framework-free self-check or assertion.
 6. **Redundant:** Do not run redundant test, checkups unless needed. Remove duplicant and redundant statements.
-7. **Intentionality:** Mark simplifications with `AI HERE:` comments, noting the ceiling and upgrade path.
-8. **Signal over Surface:** Minimal output. Functionality and signal is enough — anything that neither informs nor acts is noise.
-9. **Context Optimization:** Do not pollute/bloat using docs. Prioritize trimming/removing unhelpful, and redundant documentation, comment or code. Remove it if it offers little to no value strictly on scripts, frontend and backend.
+7. **Test Economy:** No tests for low-priority behavior. A test that guards no real failure mode is token and maintenance waste. Write it only if the cost of the bug it catches exceeds the cost of the test; when in doubt, skip.
+8. **Intentionality:** Mark simplifications with `AI HERE:` comments, noting the ceiling and upgrade path.
+9. **Signal over Surface:** Minimal output. Functionality and signal is enough — anything that neither informs nor acts is noise.
+10. **Context Optimization:** Do not pollute/bloat using docs. Prioritize trimming/removing unhelpful, and redundant documentation, comment or code. Remove it if it offers little to no value strictly on scripts, frontend and backend.
 
 ## Commit Policy (Atomic + Amend)
 
