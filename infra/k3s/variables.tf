@@ -116,6 +116,21 @@ variable "MAXTERVIEW_MIGRATE_DATABASE_URL" {
   default     = ""
 }
 
+# Empty is a supported state here, unlike LLM_* above: the voice controls disable themselves and say
+# why (VOICE.md V7), so a deploy without Workers AI plans, applies and runs with voice off rather than
+# failing the plan. The variables still have to exist for the secret to carry them as empty strings.
+variable "MAXTERVIEW_CLOUDFLARE_ACCOUNT_ID" {
+  description = "Cloudflare account ID for Workers AI (voice transcription + speech)"
+  sensitive   = true
+  default     = ""
+}
+
+variable "MAXTERVIEW_CLOUDFLARE_API_TOKEN" {
+  description = "Cloudflare API token scoped 'Workers AI - Read' (the only credential the voice engine needs)"
+  sensitive   = true
+  default     = ""
+}
+
 variable "app_yaml_path" {
   type        = string
   default     = null

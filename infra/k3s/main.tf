@@ -296,6 +296,9 @@ resource "kubernetes_secret" "maxterview_secrets" {
     BYOK_ENCRYPTION_KEY     = var.MAXTERVIEW_BYOK_ENCRYPTION_KEY
     PAYMONGO_SECRET_KEY     = var.MAXTERVIEW_PAYMONGO_SECRET_KEY
     PAYMONGO_WEBHOOK_SECRET = var.MAXTERVIEW_PAYMONGO_WEBHOOK_SECRET
+    # Empty means voice is off, which the consumer states rather than guesses (VOICE.md V7).
+    CLOUDFLARE_ACCOUNT_ID = var.MAXTERVIEW_CLOUDFLARE_ACCOUNT_ID
+    CLOUDFLARE_API_TOKEN  = var.MAXTERVIEW_CLOUDFLARE_API_TOKEN
   }
   type = "Opaque"
 }
