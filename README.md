@@ -161,6 +161,7 @@ Deployment injects it with `envFrom`, so **each key must literally equal the env
 | `TF_VAR_MAXTERVIEW_PAYMONGO_SECRET_KEY` / `_WEBHOOK_SECRET`                  | no       | empty → `/api/billing/*` answers 503 (period mode needs only these two). `_WEBHOOK_SECRET` is the registered endpoint's `whsk_…` — trailing whitespace/newlines break the HMAC |
 | `TF_VAR_MAXTERVIEW_CLERK_AUDIENCE`                                      | no       | empty = accept tokens without an `aud` claim             |
 | `TF_VAR_MAXTERVIEW_MIGRATE_DATABASE_URL`                                | no       | reserved (D12), migrate-role DSN for the migration Job   |
+| `TF_VAR_MAXTERVIEW_CLOUDFLARE_ACCOUNT_ID` / `_API_TOKEN`                | no       | voice (M16). Empty = the chat surface disables its voice controls and says why, so an env without Workers AI runs fine with voice off. `_API_TOKEN` needs the `Workers AI - Read` policy only |
 
 Extra keys added later are picked up with no manifest change (`envFrom`), but a _malformed_ key name is
 all-or-nothing: it blocks the whole pod. Rotate from Infisical + `make apply MOD=k3s`; never `kubectl apply`
@@ -239,7 +240,7 @@ PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.d
 | `cloudflared-token`    | `default`  | Cloudflare Tunnel token for `cloudflared`               |
 | `ghcr-login`           | `default` + `portfolio` + `diagram` + `maxterview` | Docker registry creds for GHCR           |
 | `diagram-secrets`      | `diagram`  | API key + PostgreSQL connection string                  |
-| `maxterview-secrets`   | `maxterview` | Neon DSN + Clerk/LLM/BYOK/PayMongo env, injected via `envFrom` |
+| `maxterview-secrets`   | `maxterview` | Neon DSN + Clerk/LLM/BYOK/PayMongo/Cloudflare env, injected via `envFrom` |
 | `repo-secret`          | `argocd`   | ArgoCD repo credentials (private repo)                  |
 | `postgres-credentials` | `database` | PostgreSQL password (k3s only)                          |
 
