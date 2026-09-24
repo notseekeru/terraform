@@ -137,9 +137,13 @@ variable "app_yaml_path" {
   description = "Path to app.yaml manifest. Defaults to ../../../gitops/app.yaml relative to this module."
 }
 
-# --- maxterview logs (Alloy -> Grafana Cloud Loki) ---
+# --- maxterview telemetry (Alloy -> Grafana Cloud Loki, Tempo, Prometheus) ---
 # `maxterview-logs`, consumed by the Alloy Deployment with `valueFrom`: the keys are the env-var
 # names the Alloy config reads via sys.env().
+#
+# Set all four before the gitops revision that reads them: the Alloy config cannot load with an empty
+# OTLP endpoint, so the new pod crashloops and exports nothing (the old one keeps tailing logs until
+# then, so the log pipeline survives the roll either way).
 
 variable "MAXTERVIEW_LOKI_URL" {
   description = "Grafana Cloud Loki push URL: https://logs-prod-<region>.grafana.net/loki/api/v1/push"
@@ -147,11 +151,16 @@ variable "MAXTERVIEW_LOKI_URL" {
 }
 
 variable "MAXTERVIEW_LOKI_USER" {
-  description = "Grafana Cloud stack instance ID, used as the Loki basic-auth username"
+  description = "Grafana Cloud stack instance ID, used as the basic-auth username on both endpoints"
   sensitive   = true
 }
 
 variable "MAXTERVIEW_LOKI_TOKEN" {
-  description = "Grafana Cloud access-policy token scoped logs:write (Alloy's only credential)"
+  description = "Grafana Cloud access-policy token scoped logs:write, metrics:write, traces:write (Alloy's only credential)"
+  sensitive   = true
+}
+
+variable "MAXTERVIEW_OTLP_URL" {
+  description = "Grafana Cloud OTLP gateway URL: https://otlp-gateway-<zone>.grafana.net/otlp"
   sensitive   = true
 }

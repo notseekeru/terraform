@@ -303,9 +303,11 @@ resource "kubernetes_secret" "maxterview_secrets" {
   type = "Opaque"
 }
 
-# Alloy's write credential for Grafana Cloud Loki. Deliberately NOT part of `maxterview-secrets`:
-# the app never holds a telemetry write token, and Alloy reads these three keys with `valueFrom`
-# rather than `envFrom`, so a malformed key here cannot block the backend pod.
+# Alloy's write credential for Grafana Cloud (logs, plus the OTLP gateway's metrics and traces).
+# Deliberately NOT part of `maxterview-secrets`: the app never holds a telemetry write token, and Alloy
+# reads these keys with `valueFrom` rather than `envFrom`, so a malformed key here cannot block the
+# backend pod. LOKI_USER/LOKI_TOKEN serve both endpoints: same stack instance ID, same access-policy
+# token, widened to metrics:write and traces:write.
 resource "kubernetes_secret" "maxterview_logs" {
   metadata {
     name      = "maxterview-logs"
@@ -316,6 +318,7 @@ resource "kubernetes_secret" "maxterview_logs" {
     LOKI_URL   = var.MAXTERVIEW_LOKI_URL
     LOKI_USER  = var.MAXTERVIEW_LOKI_USER
     LOKI_TOKEN = var.MAXTERVIEW_LOKI_TOKEN
+    OTLP_URL   = var.MAXTERVIEW_OTLP_URL
   }
   type = "Opaque"
 }
