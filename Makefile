@@ -1,6 +1,8 @@
 MOD ?=
 ENV ?= prod
 SECRETS_PATH ?= /consumers/terraform
+# A contended or stale state lock fails after 30s instead of hanging the run (README operating rules).
+LOCK ?= -lock-timeout=30s
 
 # R2 state-bucket creds are namespaced TF_VAR_R2_* so they never collide with the
 # AWS provider's native AWS_ACCESS_KEY_ID. The R2 s3 backend endpoint is delivered
@@ -45,19 +47,19 @@ upgradeinit:
 
 plan:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-		terraform -chdir=infra/$(MOD) plan
+		terraform -chdir=infra/$(MOD) plan $(LOCK)
 
 refresh:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-		terraform -chdir=infra/$(MOD) refresh
+		terraform -chdir=infra/$(MOD) refresh $(LOCK)
 
 apply:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-		terraform -chdir=infra/$(MOD) apply
+		terraform -chdir=infra/$(MOD) apply $(LOCK)
 
 destroy:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-		terraform -chdir=infra/$(MOD) destroy
+		terraform -chdir=infra/$(MOD) destroy $(LOCK)
 
 # Sweeps billable drift across the account via nuke-config.yaml. aws-nuke has
 # NO tag-based opt-out. the config excludes KMS + IAM so this never orphans the
@@ -92,7 +94,7 @@ dump:
 verify-db-auth:
 	@echo "Authenticating as diagram over the Service DNS (TCP path clients use)..."
 	@infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-	  kubectl run db-auth-probe --rm -i --restart=Never --image=postgres:16-alpine -- \
+	  kubectl run db-auth-probe --rm -i --restart=Never --image=postgres:18-alpine -- \
 	  psql "postgresql://diagram:$$POSTGRES_PASSWORD@postgres.database.svc.cluster.local:5432/diagramdb" -c 'select 1'
 	@echo "OK: role authenticates over TCP"
 
