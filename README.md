@@ -49,9 +49,9 @@ When no CI stage runs and only `make apply` gates concurrency, follow these:
 - `use_lockfile = true` guards **same-module** Terraform runs only — it does not stop out-of-band destructive changes (`aws-nuke`, console edits).
 - Stale lock after a crash: run `terraform force-unlock <LOCK_ID>` (the ID is in the error) once you're sure no apply is live. `-lock=false` is an emergency bypass only.
 
-## No CI/CD is deliberate
+## CI checks only, no deploy automation
 
-Single-owner sandbox: applies are human-gated via `make apply` (reviewed `plan` first) and the R2 lock serializes same-module runs. A plan→approve→apply pipeline now would add a runner and a CI credential surface for zero extra safety. Add orchestration only if a second person/machine needs `apply`, or you need non-interactive reviewed deploys. Full rationale, trade-offs, and the escalation ladder: **ADR 0002** (`docs/adr/0002-no-cicd-manual-human-gated-applies.md`).
+`.github/workflows/ci.yml` runs `fmt -check` + `init -backend=false` + `validate` per module on push and PR: no secrets, no state, no `plan`, no `apply`. Applies are human-gated via `make apply` (reviewed `plan` first) and the R2 lock serializes same-module runs; a plan→approve→apply pipeline would add a runner and a CI credential surface for zero extra safety. Add orchestration only if a second person/machine needs `apply`, or you need non-interactive reviewed deploys. Rationale: **ADR 0004** (`docs/adr/0004-ci-lint-and-validate-only.md`, why CI stops at `validate`) and **ADR 0002** (`docs/adr/0002-no-cicd-manual-human-gated-applies.md`, escalation ladder).
 
 ---
 

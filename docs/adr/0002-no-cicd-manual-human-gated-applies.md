@@ -2,7 +2,7 @@
 
 - **Status:** Accepted (single-owner sandbox)
 - **Date:** 2026-09-07 (decision predates; formalized here)
-- **Related:** ADR 0001, `Makefile`, `README.md` §Locking, R2 S3-native locking
+- **Related:** ADR 0001, ADR 0004 (amends §Decision: credential-free `fmt`/`validate` CI is allowed, `plan`/`apply` stay manual), `Makefile`, `README.md` §Locking, R2 S3-native locking
 
 ---
 

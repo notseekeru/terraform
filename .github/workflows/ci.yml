@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [aws, cloudflare, k3s]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.5
+
+      - run: terraform fmt -check -recursive infra
+
+      # -backend=false because CI holds no R2 credentials: this validates the
+      # config, not the remote state. A credentialed plan belongs to the
+      # operator (see docs/adr/0002, docs/adr/0004).
+      - run: terraform -chdir=infra/${{ matrix.module }} init -backend=false -input=false
+      - run: terraform -chdir=infra/${{ matrix.module }} validate
