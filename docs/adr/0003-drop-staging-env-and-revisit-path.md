@@ -33,14 +33,14 @@ path below, and only when a real trigger exists:
 
 ## What was removed (2026-09-19)
 
-| Layer | Removed |
-| --- | --- |
-| Neon | project `maxterview-staging` (own project, per D11) |
-| Infisical | environment `staging`, folder `/consumers/terraform` (~24 `${prod...}` refs + 5 local overrides) |
+| Layer     | Removed                                                                                                                                                                                                                   |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Neon      | project `maxterview-staging` (own project, per D11)                                                                                                                                                                       |
+| Infisical | environment `staging`, folder `/consumers/terraform` (~24 `${prod...}` refs + 5 local overrides)                                                                                                                          |
 | Terraform | `infra/k3s-staging/` root module + state key `terraform/k3s-staging/terraform.tfstate`; the staging-endpoint refusal guard in `infra/k3s/variables.tf`; the `maxterview_staging` CNAME in `infra/cloudflare/variables.tf` |
-| K8s | namespace `maxterview-staging`, `maxterview-staging-secrets`, its namespace-local `ghcr-login` |
-| GitOps | `apps-of-apps/maxterview-staging.yaml`, `apps/maxterview/overlays/staging/` |
-| App repo | CD matrix entry `frontend-staging` (`staging-<sha>` tag), the second overlay bump in `update-gitops-repo`, `frontend/.env.staging`, Dockerfile `ARG VITE_MODE` |
+| K8s       | namespace `maxterview-staging`, `maxterview-staging-secrets`, its namespace-local `ghcr-login`                                                                                                                            |
+| GitOps    | `apps-of-apps/maxterview-staging.yaml`, `apps/maxterview/overlays/staging/`                                                                                                                                               |
+| App repo  | CD matrix entry `frontend-staging` (`staging-<sha>` tag), the second overlay bump in `update-gitops-repo`, `frontend/.env.staging`, Dockerfile `ARG VITE_MODE`                                                            |
 
 An empty `terraform/k3s-staging/terraform.tfstate` may survive in R2 — harmless, and re-bindable if staging
 comes back (`make init MOD=k3s-staging` overwrites nothing, it reads).
@@ -61,7 +61,7 @@ the image build.
    — later additions to prod do **not** propagate. Local overrides, never references: `DATABASE_URL` (staging
    DSN), `CLERK_DOMAIN`/`CLERK_JWKS_URL` (the Clerk **Development** instance, not `clerk.seekeru.tech`),
    `PAYMONGO_SECRET_KEY`/`_WEBHOOK_SECRET` (the `sk_test_`/`whsk_` pair — prod's are live). Use the profile
-   Infisical CLI (0.43.x); the flake's 0.41.x silently no-ops some writes.
+   Infisical CLI (0.43.x);
 3. **Terraform** — re-add `infra/k3s-staging/` as its own root module + state key (`MOD` builds the key, so it
    stays isolated from `infra/k3s`). Three objects: namespace `maxterview-staging`,
    `maxterview-staging-secrets` (11 UPPERCASE env-var keys, `envFrom` is all-or-nothing), and the

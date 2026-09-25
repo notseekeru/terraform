@@ -8,12 +8,12 @@
 
 ## Prerequisites
 
-| Requirement            | Details                                                                                 |
-| ---------------------- | --------------------------------------------------------------------------------------- |
-| **Terraform**          | `>= 1.0` ([install](https://developer.hashicorp.com/terraform/install))                 |
-| **Cloudflare token**   | API token `Zone → DNS → Edit` (`TF_VAR_CLOUDFLARE_API_TOKEN`) — for `cloudflare` module |
-| **k3s**                | Existing k3s cluster with `~/.kube/config` — see [K3s Module](#k3s-module-local)        |
-| **Nix / direnv**       | Optional: `nix develop` shell; `direnv` auto-loads it, pulls, exports `KUBECONFIG`      |
+| Requirement          | Details                                                                                 |
+| -------------------- | --------------------------------------------------------------------------------------- |
+| **Terraform**        | `>= 1.0` ([install](https://developer.hashicorp.com/terraform/install))                 |
+| **Cloudflare token** | API token `Zone → DNS → Edit` (`TF_VAR_CLOUDFLARE_API_TOKEN`) — for `cloudflare` module |
+| **k3s**              | Existing k3s cluster with `~/.kube/config` — see [K3s Module](#k3s-module-local)        |
+| **Nix / direnv**     | Optional: `nix develop` shell; `direnv` auto-loads it, pulls, exports `KUBECONFIG`      |
 
 `make` is optional (workflow targets). Secrets are not shipped in the repo — see [Fresh clone](#fresh-clone-on-a-new-device).
 
@@ -46,7 +46,7 @@ When no CI stage runs and only `make apply` gates concurrency, follow these:
 - One `apply`/`destroy` per module at a time. Different modules can run in parallel (state keys differ; locks are per-module).
 - Run with `-lock-timeout=30s` so a contended/stale lock fails fast instead of hanging.
 - A read-only `plan` also holds the state lock through refresh+plan; two parallel `plan`s serialize.
-- `use_lockfile = true` guards **same-module** Terraform runs only — it does not stop out-of-band destructive changes (`aws-nuke`, console edits). Tests on the shared bucket verified the S3-native lock (`412 PreconditionFailed`); re-test if the backend ever moves off R2.
+- `use_lockfile = true` guards **same-module** Terraform runs only — it does not stop out-of-band destructive changes (`aws-nuke`, console edits).
 - Stale lock after a crash: run `terraform force-unlock <LOCK_ID>` (the ID is in the error) once you're sure no apply is live. `-lock=false` is an emergency bypass only.
 
 ## No CI/CD is deliberate
@@ -150,18 +150,18 @@ make dump   # → ~/backups/diagramdb-<timestamp>.sql.gz
 `kubernetes_secret.maxterview_secrets` is the one consumer-side contract for maxterview: the backend
 Deployment injects it with `envFrom`, so **each key must literally equal the env var name** (UPPERCASE).
 
-| Infisical key (path `/consumers/terraform`)                             | Required | Notes                                                    |
-| ----------------------------------------------------------------------- | -------- | -------------------------------------------------------- |
-| `TF_VAR_MAXTERVIEW_DATABASE_URL`                                        | yes      | Neon **direct** host + `?sslmode=require`, not `-pooler` |
-| `TF_VAR_MAXTERVIEW_CLERK_JWKS_URL`                                      | yes      | prod instance JWKS (backend verifies JWTs)               |
-| `TF_VAR_MAXTERVIEW_CLERK_DOMAIN`                                        | yes      | e.g. `https://clerk.seekeru.tech`                        |
-| `TF_VAR_MAXTERVIEW_LLM_BASE_URL` / `_MODEL`                            | yes      | empty = silent STUB mode (fake interviews); a `validation` block now fails the plan |
-| `TF_VAR_MAXTERVIEW_LLM_API_KEY`                                         | no       | empty is correct for the unauthenticated self-hosted endpoint |
-| `TF_VAR_MAXTERVIEW_BYOK_ENCRYPTION_KEY`                                 | yes      | Fernet key for BYOK (`BYOK.md`); rotate = saved keys are orphaned |
-| `TF_VAR_MAXTERVIEW_PAYMONGO_SECRET_KEY` / `_WEBHOOK_SECRET`                  | no       | empty → `/api/billing/*` answers 503 (period mode needs only these two). `_WEBHOOK_SECRET` is the registered endpoint's `whsk_…` — trailing whitespace/newlines break the HMAC |
-| `TF_VAR_MAXTERVIEW_CLERK_AUDIENCE`                                      | no       | empty = accept tokens without an `aud` claim             |
-| `TF_VAR_MAXTERVIEW_MIGRATE_DATABASE_URL`                                | no       | reserved (D12), migrate-role DSN for the migration Job   |
-| `TF_VAR_MAXTERVIEW_CLOUDFLARE_ACCOUNT_ID` / `_API_TOKEN`                | no       | voice (M16). Empty = the chat surface disables its voice controls and says why, so an env without Workers AI runs fine with voice off. `_API_TOKEN` needs the `Workers AI - Read` policy only |
+| Infisical key (path `/consumers/terraform`)                 | Required | Notes                                                                                                                                                                                         |
+| ----------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TF_VAR_MAXTERVIEW_DATABASE_URL`                            | yes      | Neon **direct** host + `?sslmode=require`, not `-pooler`                                                                                                                                      |
+| `TF_VAR_MAXTERVIEW_CLERK_JWKS_URL`                          | yes      | prod instance JWKS (backend verifies JWTs)                                                                                                                                                    |
+| `TF_VAR_MAXTERVIEW_CLERK_DOMAIN`                            | yes      | e.g. `https://clerk.seekeru.tech`                                                                                                                                                             |
+| `TF_VAR_MAXTERVIEW_LLM_BASE_URL` / `_MODEL`                 | yes      | empty = silent STUB mode (fake interviews); a `validation` block now fails the plan                                                                                                           |
+| `TF_VAR_MAXTERVIEW_LLM_API_KEY`                             | no       | empty is correct for the unauthenticated self-hosted endpoint                                                                                                                                 |
+| `TF_VAR_MAXTERVIEW_BYOK_ENCRYPTION_KEY`                     | yes      | Fernet key for BYOK (`BYOK.md`); rotate = saved keys are orphaned                                                                                                                             |
+| `TF_VAR_MAXTERVIEW_PAYMONGO_SECRET_KEY` / `_WEBHOOK_SECRET` | no       | empty → `/api/billing/*` answers 503 (period mode needs only these two). `_WEBHOOK_SECRET` is the registered endpoint's `whsk_…` — trailing whitespace/newlines break the HMAC                |
+| `TF_VAR_MAXTERVIEW_CLERK_AUDIENCE`                          | no       | empty = accept tokens without an `aud` claim                                                                                                                                                  |
+| `TF_VAR_MAXTERVIEW_MIGRATE_DATABASE_URL`                    | no       | reserved (D12), migrate-role DSN for the migration Job                                                                                                                                        |
+| `TF_VAR_MAXTERVIEW_CLOUDFLARE_ACCOUNT_ID` / `_API_TOKEN`    | no       | voice (M16). Empty = the chat surface disables its voice controls and says why, so an env without Workers AI runs fine with voice off. `_API_TOKEN` needs the `Workers AI - Read` policy only |
 
 Extra keys added later are picked up with no manifest change (`envFrom`), but a _malformed_ key name is
 all-or-nothing: it blocks the whole pod. Rotate from Infisical + `make apply MOD=k3s`; never `kubectl apply`
@@ -235,14 +235,14 @@ PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.d
 
 ## K8s Secrets (created by Terraform)
 
-| Secret Name            | Namespace  | Purpose                                                 |
-| ---------------------- | ---------- | ------------------------------------------------------- |
-| `cloudflared-token`    | `default`  | Cloudflare Tunnel token for `cloudflared`               |
-| `ghcr-login`           | `default` + `portfolio` + `diagram` + `maxterview` | Docker registry creds for GHCR           |
-| `diagram-secrets`      | `diagram`  | API key + PostgreSQL connection string                  |
-| `maxterview-secrets`   | `maxterview` | Neon DSN + Clerk/LLM/BYOK/PayMongo/Cloudflare env, injected via `envFrom` |
-| `repo-secret`          | `argocd`   | ArgoCD repo credentials (private repo)                  |
-| `postgres-credentials` | `database` | PostgreSQL password (k3s only)                          |
+| Secret Name            | Namespace                                          | Purpose                                                                   |
+| ---------------------- | -------------------------------------------------- | ------------------------------------------------------------------------- |
+| `cloudflared-token`    | `default`                                          | Cloudflare Tunnel token for `cloudflared`                                 |
+| `ghcr-login`           | `default` + `portfolio` + `diagram` + `maxterview` | Docker registry creds for GHCR                                            |
+| `diagram-secrets`      | `diagram`                                          | API key + PostgreSQL connection string                                    |
+| `maxterview-secrets`   | `maxterview`                                       | Neon DSN + Clerk/LLM/BYOK/PayMongo/Cloudflare env, injected via `envFrom` |
+| `repo-secret`          | `argocd`                                           | ArgoCD repo credentials (private repo)                                    |
+| `postgres-credentials` | `database`                                         | PostgreSQL password (k3s only)                                            |
 
 ## Nix Dev Shell
 
@@ -261,13 +261,7 @@ direnv allow       # or: auto-load on cd (also pulls + exports KUBECONFIG)
 
 ## Security
 
-- Secrets live in **Infisical**, injected via `infisical run` — never in a committed key. `.gitignore` drops `secrets.tfvars`, `*.tfvars`, `kubeconfig`, `.infisical.json`; `secrets.tfvars.example` is dummy and safe to commit.
-
 ### Folder layout (consumer / source)
-
-`infisical run --path` reads exactly **one** folder and does **not** recurse, and `${...}` references resolve
-only **within the same folder** on CLI 0.41.x (cross-folder refs store verbatim — verified 2026-09-12).
-So a consumer folder must hold every key its target needs; `*_source` folders are reference copies.
 
 | Path                   | Holds                                                     | Read by                                                        |
 | ---------------------- | --------------------------------------------------------- | -------------------------------------------------------------- |
@@ -277,9 +271,6 @@ So a consumer folder must hold every key its target needs; `*_source` folders ar
 | `/sources/cloudflare`  | `CLOUDFLARE_TOKEN`, `R2_ACCOUNT_ID`, `R2_BUCKET`, `AWS_*` | nothing yet (its `AWS_*` are R2 creds — misnamed per ADR 0001) |
 | `/sources/tailscale`   | `TAILSCALE_AUTH_*`                                        | nothing yet                                                    |
 | `/sources/webhooks`    | `ALERTMANAGER_SLACK_WEBHOOK`                              | nothing yet                                                    |
-
-`/sources/*` are candidates for deletion (their `GITHUB_*`/`CLOUDFLARE_TOKEN` values are byte-identical to the
-`/consumers/terraform` copies — verified by hash) or for a CLI upgrade that makes `${folder.KEY}` work.
 
 - GitHub PAT / credentials are written straight to K8s secrets — they never sit in Terraform state.
 - R2 backend creds are `TF_VAR_R2_*`, AWS creds `AWS_*`; the endpoint split is handled by the `infra/aws` provider pin (see [Remote state](#remote-state-r2--locking)).
