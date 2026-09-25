@@ -33,8 +33,8 @@ The operational cost is not only the secret set:
 
 ## Decision
 
-CI runs on push and PR, and does four things per module (`aws`, `cloudflare`, `k3s`):
-`terraform fmt -check -recursive`, `terraform init -backend=false`, `terraform validate`. Nothing else.
+CI runs on push and PR: `terraform fmt -check -recursive infra` once, then per module
+(`aws`, `cloudflare`, `k3s`) `terraform init -backend=false` and `terraform validate`. Nothing else.
 
 Explicitly out of scope in CI:
 

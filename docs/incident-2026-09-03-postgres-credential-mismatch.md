@@ -102,7 +102,7 @@ it does not manage the secret content — nothing competes with Terraform.
 1. **Change the value in Infisical**, not in Postgres:
    ```bash
    nix develop -c infisical secrets set POSTGRES_PASSWORD='<new-value>' \
-     --env dev --path /terraform
+     --env prod --path /consumers/terraform
    ```
    (Adjust `--env`/`--path` to your Infisical project/environment.)
 2. **Preview** the drift (secrets + StatefulSet + `diagram-secrets` all update):
@@ -133,7 +133,7 @@ it does not manage the secret content — nothing competes with Terraform.
    ```
 5. **Verify** over the exact TCP path clients use (fails loudly if misaligned):
    ```bash
-   make verify-db-auth MOD=k3s
+   make verify-db-auth
    # expected: authenticates over postgres.database.svc.cluster.local
    ```
 6. **Restart the backend** so it reconnects with the fresh secret:

@@ -118,9 +118,8 @@ psql -U diagram -d diagramdb -c \
   apply had completed). Cleared with
   `terraform -chdir=infra/k3s force-unlock -force <lock-id>`. After any
   interrupted `make apply`, check state lock before re-planning.
-- Probes/dumps in `Makefile` still reference `postgres:16-alpine` as the
-  **client** image (e.g. `verify-db-auth`). Harmless (client only) but stale;
-  consider bumping to `18-alpine`.
+- Probes/dumps in `Makefile` now use the `postgres:18-alpine` **client** image
+  (e.g. `verify-db-auth`), matching the server.
 - Recovery if PVC ever lost: re-init via step 4–7 from the verified dump. Same
   host for PVC + backups remains the single-disaster risk.
 

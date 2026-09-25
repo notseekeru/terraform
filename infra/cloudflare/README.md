@@ -28,7 +28,7 @@ module (it creates its own Cloudflare records via an aliased `cloudflare` provid
 The provider is authenticated with `TF_VAR_CLOUDFLARE_API_TOKEN` — a
 `cfat_…` API token with `Zone → DNS → Edit`. (`TF_VAR_CLOUDFLARE_ACCOUNT_ID` is
 also stored in Infisical, but the DNS-only code path here does not consume it; it
-is kept for parity/future tunnel work.) Inject via Infisical `/terraform` — never
+is kept for parity/future tunnel work.) Inject via Infisical `/consumers/terraform` — never
 commit token values.
 
 ## Workflow
@@ -60,7 +60,7 @@ try to duplicate it:
 2. Add the matching entry to `records` in `variables.tf`.
 3. Import it into state:
    ```bash
-   infisical run --path /consumers/terraform --env dev -- terraform -chdir=infra/cloudflare import \
+   infisical run --path /consumers/terraform --env prod -- terraform -chdir=infra/cloudflare import \
      'cloudflare_dns_record.this["<key>"]' '<ZONE_ID>/<RECORD_ID>'
    ```
 4. `make plan MOD=cloudflare` → should show no diff.

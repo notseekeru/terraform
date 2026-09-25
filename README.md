@@ -8,12 +8,12 @@
 
 ## Prerequisites
 
-| Requirement          | Details                                                                                 |
-| -------------------- | --------------------------------------------------------------------------------------- |
-| **Terraform**        | `>= 1.0` ([install](https://developer.hashicorp.com/terraform/install))                 |
-| **Cloudflare token** | API token `Zone → DNS → Edit` (`TF_VAR_CLOUDFLARE_API_TOKEN`) — for `cloudflare` module |
-| **k3s**              | Existing k3s cluster with `~/.kube/config` — see [K3s Module](#k3s-module-local)        |
-| **Nix / direnv**     | Optional: `nix develop` shell; `direnv` auto-loads it, pulls, exports `KUBECONFIG`      |
+| Requirement          | Details                                                                                    |
+| -------------------- | ------------------------------------------------------------------------------------------ |
+| **Terraform**        | `>= 1.0` ([install](https://developer.hashicorp.com/terraform/install))                    |
+| **Cloudflare token** | API token `Zone → DNS → Edit` (`TF_VAR_CLOUDFLARE_API_TOKEN`) — for `cloudflare` and `aws` |
+| **k3s**              | Existing k3s cluster with `~/.kube/config` — see [K3s Module](#k3s-module-local)           |
+| **Nix / direnv**     | Optional: `nix develop` shell; `direnv` auto-loads it, pulls, exports `KUBECONFIG`         |
 
 `make` is optional (workflow targets). Secrets are not shipped in the repo — see [Fresh clone](#fresh-clone-on-a-new-device).
 
@@ -37,7 +37,7 @@ State lives in a **Cloudflare R2 bucket** (`s3` backend) under a per-module key 
 
 > **Do not** `unset AWS_ENDPOINT_URL_S3` around plan/apply/refresh/destroy — that starves the backend's own R2 connection. Removing or weakening the `aws` provider pin routes AWS bucket calls to R2 (`access key has length 20, should be 32`). Full rationale + history: **ADR 0001** (`docs/adr/0001-r2-endpoint-ambient-env-provider-pin.md`).
 
-Backend settings live inline in each module's `versions.tf` `backend "s3"` block. Static fields (`skip_*`, `use_lockfile`, region) are inline; `bucket`/`key` and the two R2 creds come from `-backend-config` flags in the Makefile (init targets run via `/bin/sh -c` so `$TF_VAR_R2_*` expands). After `init`, the binding caches in `infra/<MOD>/.terraform/`. First-time push of pre-existing local state: `make migrate MOD=<m>`.
+Backend settings live inline in each module's `versions.tf` `backend "s3"` block. Static fields (`skip_*`, `use_lockfile`) are inline; `bucket`/`key`/`region` and the two R2 creds come from `-backend-config` flags in the Makefile (init targets run via `/bin/sh -c` so `$TF_VAR_R2_*` expands). After `init`, the binding caches in `infra/<MOD>/.terraform/`. First-time push of pre-existing local state: `make migrate MOD=<m>`.
 
 ### Operating rules
 
@@ -51,7 +51,7 @@ When no CI stage runs and only `make apply` gates concurrency, follow these:
 
 ## CI checks only, no deploy automation
 
-`.github/workflows/ci.yml` runs `fmt -check` + `init -backend=false` + `validate` per module on push and PR: no secrets, no state, no `plan`, no `apply`. Applies are human-gated via `make apply` (reviewed `plan` first) and the R2 lock serializes same-module runs; a plan→approve→apply pipeline would add a runner and a CI credential surface for zero extra safety. Add orchestration only if a second person/machine needs `apply`, or you need non-interactive reviewed deploys. Rationale: **ADR 0004** (`docs/adr/0004-ci-lint-and-validate-only.md`, why CI stops at `validate`) and **ADR 0002** (`docs/adr/0002-no-cicd-manual-human-gated-applies.md`, escalation ladder).
+`.github/workflows/ci.yml` runs `fmt -check -recursive` once, then `init -backend=false` + `validate` per module on push and PR: no secrets, no state, no `plan`, no `apply`. Applies are human-gated via `make apply` (reviewed `plan` first) and the R2 lock serializes same-module runs; a plan→approve→apply pipeline would add a runner and a CI credential surface for zero extra safety. Add orchestration only if a second person/machine needs `apply`, or you need non-interactive reviewed deploys. Rationale: **ADR 0004** (`docs/adr/0004-ci-lint-and-validate-only.md`, why CI stops at `validate`) and **ADR 0002** (`docs/adr/0002-no-cicd-manual-human-gated-applies.md`, escalation ladder).
 
 ---
 
@@ -60,7 +60,7 @@ When no CI stage runs and only `make apply` gates concurrency, follow these:
 ```bash
 cd terraform
 
-# Secrets come from Infisical (direnv/.envrc wires the shell; there is no secrets.tfvars flow).
+# Secrets come from Infisical: every Makefile target runs `infisical run` itself; there is no secrets.tfvars flow.
 #   -- If you use k3s, install k3s first.
 make init MOD=k3s    # init providers + bind R2 backend
 make plan MOD=k3s    # preview
@@ -71,7 +71,7 @@ make apply MOD=k3s   # apply
 
 The repo is operator-reproducible, not fresh-clone-self-contained. Before init/plan works on a new machine (none of this ships in the repo, by design):
 
-1. **Infisical identity** — copy `~/.config/infisical/` from a working device (or `infisical login`) plus this workspace's `.infisical.json` (`/terraform` dev).
+1. **Infisical identity** — copy `~/.config/infisical/` from a working device (or `infisical login`) plus this workspace's `.infisical.json` (path `/consumers/terraform`, env `prod`).
 2. **Secrets populated** — the Infisical project must hold the `TF_VAR_*`/`AWS_*` vars each module's `variables.tf` needs, incl. the R2 set (`TF_VAR_R2_*`) and ambient `AWS_ENDPOINT_URL_S3`.
 3. **R2 state bucket live** — creds must still point at the existing `terraform-state` bucket.
 4. **`gitops/` repo checked out at `../gitops/`** — `k3s` reads `app.yaml` via `file()` at apply time.
@@ -117,7 +117,7 @@ Module targets take `MOD=k3s|aws|cloudflare`; the `infra/` prefix and Infisical 
 | `make dump`        | Dump `diagramdb` from local k3s postgres → `~/backups/`    |
 | `make nuke-list`   | **Dry-run** aws-nuke sweep — deletes nothing               |
 
-**Variables:** `MOD` (slugs above), `ENV` (default `dev`), `SECRETS_PATH` (default `/terraform`).
+**Variables:** `MOD` (slugs above), `ENV` (default `prod`), `SECRETS_PATH` (default `/consumers/terraform`).
 
 ```bash
 make init MOD=k3s && make plan MOD=k3s && make apply MOD=k3s
@@ -131,7 +131,7 @@ Runs against an existing k3s cluster via `~/.kube/config`. This is the deploymen
 
 | Aspect                | Detail                                                                            |
 | --------------------- | --------------------------------------------------------------------------------- |
-| **Database**          | Self-hosted PG 16 StatefulSet, `database` ns, 5Gi PVC on `local-path`             |
+| **Database**          | Self-hosted PG 18 StatefulSet, `database` ns, 5Gi PVC on `local-path`             |
 | **Connection string** | `postgresql://diagram:${pass}@postgres.database.svc.cluster.local:5432/diagramdb` |
 
 ```bash
@@ -147,8 +147,10 @@ make dump   # → ~/backups/diagramdb-<timestamp>.sql.gz
 
 ### maxterview secrets (Neon — external DB, no in-cluster Postgres)
 
-`kubernetes_secret.maxterview_secrets` is the one consumer-side contract for maxterview: the backend
-Deployment injects it with `envFrom`, so **each key must literally equal the env var name** (UPPERCASE).
+`kubernetes_secret.maxterview_secrets` is the one consumer-side contract for the maxterview backend:
+the Deployment injects it with `envFrom`, so **each key must literally equal the env var name**
+(UPPERCASE). The telemetry keys below land in `maxterview-logs` instead (Alloy reads them via
+`valueFrom`, so a bad key there cannot block the backend pod).
 
 | Infisical key (path `/consumers/terraform`)                 | Required | Notes                                                                                                                                                                                         |
 | ----------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -162,6 +164,8 @@ Deployment injects it with `envFrom`, so **each key must literally equal the env
 | `TF_VAR_MAXTERVIEW_CLERK_AUDIENCE`                          | no       | empty = accept tokens without an `aud` claim                                                                                                                                                  |
 | `TF_VAR_MAXTERVIEW_MIGRATE_DATABASE_URL`                    | no       | reserved (D12), migrate-role DSN for the migration Job                                                                                                                                        |
 | `TF_VAR_MAXTERVIEW_CLOUDFLARE_ACCOUNT_ID` / `_API_TOKEN`    | no       | voice (M16). Empty = the chat surface disables its voice controls and says why, so an env without Workers AI runs fine with voice off. `_API_TOKEN` needs the `Workers AI - Read` policy only |
+| `TF_VAR_MAXTERVIEW_LOKI_URL` / `_USER` / `_TOKEN`           | yes      | telemetry (Alloy → Grafana Cloud Loki/Tempo/Prometheus). Lands in `maxterview-logs`, read via `valueFrom`, not `envFrom`                                                                      |
+| `TF_VAR_MAXTERVIEW_OTLP_URL`                                | yes      | Grafana Cloud OTLP gateway URL; the Alloy config crashloops if empty                                                                                                                          |
 
 Extra keys added later are picked up with no manifest change (`envFrom`), but a _malformed_ key name is
 all-or-nothing: it blocks the whole pod. Rotate from Infisical + `make apply MOD=k3s`; never `kubectl apply`
@@ -226,7 +230,7 @@ PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.d
 
 ## Databases
 
-**Self-hosted PG 16 StatefulSet** in the `database` namespace for `k3s`. Connection string + API key are injected into the `diagram-secrets` K8s secret consumed by app pods.
+**Self-hosted PG 18 StatefulSet** in the `database` namespace for `k3s`. Connection string + API key are injected into the `diagram-secrets` K8s secret consumed by app pods.
 
 **Rotation / incident runbooks:**
 
@@ -241,6 +245,7 @@ PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.d
 | `ghcr-login`           | `default` + `portfolio` + `diagram` + `maxterview` | Docker registry creds for GHCR                                            |
 | `diagram-secrets`      | `diagram`                                          | API key + PostgreSQL connection string                                    |
 | `maxterview-secrets`   | `maxterview`                                       | Neon DSN + Clerk/LLM/BYOK/PayMongo/Cloudflare env, injected via `envFrom` |
+| `maxterview-logs`      | `maxterview`                                       | Grafana Cloud Loki/OTLP write creds for Alloy, injected via `valueFrom`   |
 | `repo-secret`          | `argocd`                                           | ArgoCD repo credentials (private repo)                                    |
 | `postgres-credentials` | `database`                                         | PostgreSQL password (k3s only)                                            |
 

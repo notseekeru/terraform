@@ -23,7 +23,7 @@ This document outlines the architecture, configuration strategy, and file struct
     │                              │                │                              │
     │   ┌──────────────────────┐   │                │   ┌──────────────────────┐   │
     │   │  EC2 App Instance    │   │                │   │  EC2 App Instance    │   │
-    │   │     (t3.micro)       │   │                │   │     (t3.micro)       │   │
+    │   │     (t4g.micro)      │   │                │   │     (t4g.micro)      │   │
     │   └──────────┬───────────┘   │                │   └──────────┬───────────┘   │
     └──────────────┼───────────────┘                └──────────────┼───────────────┘
                    │                                               │
@@ -37,7 +37,7 @@ This document outlines the architecture, configuration strategy, and file struct
     │                                                                              │
     │   ┌───────────────────────────┐                ┌───────────────────────────┐ │
     │   │    RDS PostgreSQL DB      │                │   Empty DB Subnet B       │ │
-    │   │ (Single-AZ - db.t3.micro) │                │    (Prereq for RDS)       │ │
+    │   │ (Single-AZ - db.t4g.micro) │                │    (Prereq for RDS)       │ │
     │   └───────────────────────────┘                └───────────────────────────┘ │
     └──────────────────────────────────────────────────────────────────────────────┘
 
@@ -77,7 +77,7 @@ To elevate this project from a standard exam setup to a high-fidelity platform e
 | Component               | Paid Enterprise Spec                         | Free Tier Guardrail Spec                               | Cost / Billing Reality                                                                                              |
 | ----------------------- | -------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
 | **Outbound Updates**    | Private subnets routing via **NAT Gateway**. | Public subnets routing via **Internet Gateway (IGW)**. | **Saves ~$33.00/mo.** Auto-assigned public IPs leverage 750 free in-use IPv4 hours/month. Use `make destroy` daily. |
-| **Database Redundancy** | RDS Multi-AZ PostgreSQL.                     | RDS Single-AZ (`db.t3.micro`).                         | **Saves ~$15.00/mo.** Single-AZ stays within the 750 free monthly RDS hours.                                        |
+| **Database Redundancy** | RDS Multi-AZ PostgreSQL.                     | RDS Single-AZ (`db.t4g.micro`).                        | **Saves ~$15.00/mo.** Single-AZ stays within the 750 free monthly RDS hours.                                        |
 | **Key Management**      | Customer Managed KMS ($1.00/mo).             | Default AWS Managed Key (`aws/rds`).                   | **Saves ~$1.00/mo.** Managed keys have no flat monthly fee.                                                         |
 | **Cost Protection**     | Enterprise Cost Explorer.                    | **AWS Zero-Spend Budget**.                             | **100% Free.** Fires SNS alert if charges exceed $1.00.                                                             |
 
@@ -88,7 +88,7 @@ To elevate this project from a standard exam setup to a high-fidelity platform e
 - **IPv4 Management:** App instances in public subnets receive auto-assigned public IPv4 addresses to pull packages directly via the Internet Gateway without needing an expensive NAT Gateway.
 - **Zero-Spend Budget:** Provision an `aws_budgets_budget` resource (`zero_spend`) set to $1.00 USD with SNS email alerts as an automated safety net against unintended charges.
 - **Credit-Cap Budget:** New AWS accounts get **up to $200 in free-tier promotional credits** — $100 on sign-up plus up to $100 more earned while exploring core services. To use that headroom without exhausting it, a second `aws_budgets_budget` (`credit_cap`) is set to `var.credit_cap_usd` (default `190.0`) and alarms on **95% actual spend** and **90% forecasted spend** (SNS email). Bump `credit_cap_usd` if your account holds more credit; both budgets publish to the same `billing-alerts` SNS topic.
-- **Compute Optimization:** Defaults to `t3.micro` for general Free Tier safety, with `variables.tf` structured to allow optional ARM/Graviton (`t4g.micro`) deployment.
+- **Compute Optimization:** Defaults to `t4g.micro` (ARM/Graviton, AL2023 ARM64 AMI); set `instance_type` to `t3.micro` for x86.
 
 ---
 
@@ -96,7 +96,7 @@ To elevate this project from a standard exam setup to a high-fidelity platform e
 
 ```text
 infra/aws/
-├── versions.tf      # AWS Provider (~> 5.0) + Cloudflare R2 remote state backend
+├── versions.tf      # AWS Provider (~> 6.0) + Cloudflare R2 remote state backend
 ├── provider.tf      # Configures AWS provider default tags and region
 ├── variables.tf     # Parameters (CIDR, instance classes, POSTGRES_PASSWORD, ALERT_EMAIL, credit_cap_usd)
 ├── vpc.tf           # VPC, Subnets, Route Tables, Internet Gateway (IGW)
@@ -118,7 +118,6 @@ infra/aws/
 - **Dynamic Endpoint Injection:** RDS hostnames are generated at runtime. Use Terraform’s `templatefile()` function to inject `aws_db_instance.address` into your EC2 User Data script.
 - **IAM & SSM Startup Propagation Latency:** IAM Instance Profiles take a few seconds to propagate during EC2 initialization. Ensure your User Data script includes retry loops or `cloud-init` waits when fetching SSM parameter values.
 - **ALB Health Check Mismatch:** Match the ALB Target Group health check path to the exact route exposed by your web app to prevent the Auto Scaling Group from entering continuous replacement loops.
-- **State & Tooling Versioning:** Include a `.terraform-version` file in `infra/aws/` to keep your local CLI aligned with remote Cloudflare R2 state locks.
 - **Inline HCL vs. Public Modules:** Avoid public modules (`terraform-aws-modules/vpc`) in this specific repository to maintain explicit visibility over resource provisioning, prevent hidden billing side-effects (e.g., implicit NAT Gateways/KMS creation), and keep R2 remote state locks lean. Modularization should be deferred to shared enterprise module registries.
 
 * **Single-AZ to Multi-AZ RDS Strategy:** RDS is explicitly deployed Single-AZ to remain within the 750 free monthly RDS hours. However, zero-downtime failover is pre-architected: the `aws_db_subnet_group` spans multiple AZs, allowing instant conversion to a Multi-AZ standby pair simply by setting `multi_az = true` on `aws_db_instance`.
@@ -143,11 +142,11 @@ make init MOD=aws
 # 2. Preview the AWS architecture blueprint
 make plan MOD=aws
 
-# 3. Spin up the infrastructure (non-interactive approve)
-export TF_VAR_ALB_DOMAIN="alb.seekeru.tech"   # enables ACM cert + :443 + HTTP->HTTPS
-make apply MOD=aws # or: terraform -chdir=infra/aws apply -auto-approve
+# 3. Spin up the infrastructure (make apply prompts before applying; run a reviewed plan first)
+make apply MOD=aws
 
-# 4. HTTPS/DNS is handled automatically by the module's cloudflare provider:
+# 4. HTTPS/DNS is handled automatically by the module's cloudflare provider when
+#    TF_VAR_ALB_DOMAIN is set (in Infisical) to alb.seekeru.tech:
 #    alb.<domain> CNAME -> ALB DNS, ACM validation CNAME(s) auto-created, cert ISSUED
 #    (no manual Cloudflare dashboard work) -> https://alb.seekeru.tech serves
 
@@ -178,7 +177,7 @@ As-built state is **verified and drift-free** — `terraform plan` reports `No c
 | **Seed S3 + CloudFront**             | Upload an `index.html`/assets to the `static_assets` bucket so CloudFront (`d14f3y8b1rk8te.cloudfront.net`) stops 403ing.                                                         | Free |
 | **CloudFront custom domain + HTTPS** | Add e.g. `static.seekeru.tech` with an ACM cert in `us-east-1` (CloudFront requires that region — a known cross-region gotcha), same Cloudflare CNAME-validation flow as the ALB. | Free |
 | **Wire app → RDS**                   | Have the EC2 user-data/app read `/app/db_endpoint` + `/app/POSTGRES_PASSWORD` from SSM (IAM now permits it) to form a live 3-tier app instead of static nginx.                    | Free |
-| **S3 versioning + lifecycle**        | Guard against accidental asset deletion; add the `.terraform-version` file AWS.md §6 recommends.                                                                                  | Free |
+| **S3 versioning + lifecycle**        | Guard against accidental asset deletion.                                                                                                                                          | Free |
 
 ### Medium value
 
