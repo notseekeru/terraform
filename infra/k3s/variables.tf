@@ -55,6 +55,12 @@ variable "MAXTERVIEW_CLERK_AUDIENCE" {
   default     = ""
 }
 
+variable "MAXTERVIEW_CLERK_SECRET_KEY" {
+  description = "Clerk Backend API key (sk_live_/sk_test_) — the backend reads it to fetch a user's email for billing (the session token carries no email claim); empty => checkout 409s"
+  sensitive   = true
+  default     = ""
+}
+
 # Required on purpose: empty LLM_* silently boots the backend in STUB mode (no model calls),
 # which looks like a healthy deploy while every interview is fake. Fail at plan time instead.
 # The `validation` blocks are load-bearing: a *set but empty* TF_VAR (Infisical holds an empty

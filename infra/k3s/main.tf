@@ -290,6 +290,7 @@ resource "kubernetes_secret" "maxterview_secrets" {
     CLERK_JWKS_URL          = var.MAXTERVIEW_CLERK_JWKS_URL
     CLERK_DOMAIN            = var.MAXTERVIEW_CLERK_DOMAIN
     CLERK_AUDIENCE          = var.MAXTERVIEW_CLERK_AUDIENCE
+    CLERK_SECRET_KEY        = var.MAXTERVIEW_CLERK_SECRET_KEY
     LLM_BASE_URL            = var.MAXTERVIEW_LLM_BASE_URL
     LLM_MODEL               = var.MAXTERVIEW_LLM_MODEL
     LLM_API_KEY             = var.MAXTERVIEW_LLM_API_KEY
