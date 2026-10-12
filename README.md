@@ -139,6 +139,7 @@ make init MOD=k3s && make plan MOD=k3s && make apply MOD=k3s
 ```
 
 - `docs/incident-2026-10-05-nodefs-disk-pressure-eviction.md` — the kubelet evicted every 10s for 10 hours on nodefs pressure while `systemctl restart k3s` made it look fixed. Read before debugging "ArgoCD keeps crashing" or a missing PreSync hook.
+- `docs/incident-2026-10-12-container-name-reservation-livelock.md` — a power cut left 6 pods in `CreateContainerError` for 2h14m while their containers kept running. Read before debugging "ArgoCD is degraded" that arrives with a dead database, metrics-server and tunnel.
 
 Needs Infisical secrets: `POSTGRES_PASSWORD`, `CLOUDFLARE_TOKEN`, `GITHUB_PAT`, `DIAGRAM_API_KEY`, plus the
 maxterview set below. Back up the DB before `destroy`:

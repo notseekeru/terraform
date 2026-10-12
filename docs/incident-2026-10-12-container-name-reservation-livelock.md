@@ -120,3 +120,8 @@ message contains `failed to reserve container name`.
 - **Exposure is per boot, not per deploy.** The oldest pod on the node is 76 days old and there
   are 152 deployment commits in the last 90 days, with no earlier occurrence. This one followed
   a hard stop, where containerd's metadata describes containers whose tasks are already gone.
+
+## Labels
+
+`type:incident` · `impact:service-outage` · `cause:container-runtime-race` ·
+`component:kubelet` · `environment:homelab-k3s` · `resolved`
