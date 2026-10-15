@@ -44,16 +44,16 @@ resource "helm_release" "argocd" {
 
 # --- PostgreSQL (StatefulSet + PVC) ---
 
-resource "kubernetes_namespace_v1" "database" {
+resource "kubernetes_namespace" "database" {
   metadata {
     name = "database"
   }
 }
 
-resource "kubernetes_secret_v1" "postgres_credentials" {
+resource "kubernetes_secret" "postgres_credentials" {
   metadata {
     name      = "postgres-credentials"
-    namespace = kubernetes_namespace_v1.database.metadata[0].name
+    namespace = kubernetes_namespace.database.metadata[0].name
   }
   data = {
     password = var.POSTGRES_PASSWORD
@@ -62,11 +62,11 @@ resource "kubernetes_secret_v1" "postgres_credentials" {
 }
 
 resource "kubernetes_stateful_set_v1" "postgres" {
-  depends_on = [kubernetes_namespace_v1.database]
+  depends_on = [kubernetes_namespace.database]
 
   metadata {
     name      = "postgres"
-    namespace = kubernetes_namespace_v1.database.metadata[0].name
+    namespace = kubernetes_namespace.database.metadata[0].name
   }
   spec {
     service_name          = "postgres"
@@ -104,7 +104,7 @@ resource "kubernetes_stateful_set_v1" "postgres" {
             name = "POSTGRES_PASSWORD"
             value_from {
               secret_key_ref {
-                name = kubernetes_secret_v1.postgres_credentials.metadata[0].name
+                name = kubernetes_secret.postgres_credentials.metadata[0].name
                 key  = "password"
               }
             }
@@ -164,11 +164,11 @@ resource "kubernetes_stateful_set_v1" "postgres" {
 }
 
 resource "kubernetes_service_v1" "postgres" {
-  depends_on = [kubernetes_namespace_v1.database]
+  depends_on = [kubernetes_namespace.database]
 
   metadata {
     name      = "postgres"
-    namespace = kubernetes_namespace_v1.database.metadata[0].name
+    namespace = kubernetes_namespace.database.metadata[0].name
   }
   spec {
     selector = {
@@ -183,7 +183,7 @@ resource "kubernetes_service_v1" "postgres" {
 
 # --- Secrets ---
 
-resource "kubernetes_secret_v1" "cloudflare_tunnel_token" {
+resource "kubernetes_secret" "cloudflare_tunnel_token" {
   metadata {
     name      = "cloudflared-token"
     namespace = "default"
@@ -194,7 +194,7 @@ resource "kubernetes_secret_v1" "cloudflare_tunnel_token" {
   type = "Opaque"
 }
 
-resource "kubernetes_secret_v1" "ghcr_credentials" {
+resource "kubernetes_secret" "ghcr_credentials" {
   metadata {
     name      = "ghcr-login"
     namespace = "default"
@@ -215,19 +215,19 @@ resource "kubernetes_secret_v1" "ghcr_credentials" {
 
 # Apps get their own namespace (`default` is infra-only: the tunnel) so same-named
 # Secrets/Deployments/Services cannot collide across apps and a new env never re-plans prod.
-resource "kubernetes_namespace_v1" "portfolio" {
+resource "kubernetes_namespace" "portfolio" {
   metadata {
     name = "portfolio"
   }
 }
 
-resource "kubernetes_namespace_v1" "diagram" {
+resource "kubernetes_namespace" "diagram" {
   metadata {
     name = "diagram"
   }
 }
 
-resource "kubernetes_namespace_v1" "maxterview" {
+resource "kubernetes_namespace" "maxterview" {
   metadata {
     name = "maxterview"
   }
@@ -238,11 +238,11 @@ resource "kubernetes_namespace_v1" "maxterview" {
 # migrate Job, which then aborts the whole sync) sits in ImagePullBackOff. Deliberately a separate
 # resource from the one above so the existing `default` secret is never recreated; extend the list
 # as namespaces appear.
-resource "kubernetes_secret_v1" "ghcr_credentials_app_ns" {
+resource "kubernetes_secret" "ghcr_credentials_app_ns" {
   for_each = toset([
-    kubernetes_namespace_v1.portfolio.metadata[0].name,
-    kubernetes_namespace_v1.diagram.metadata[0].name,
-    kubernetes_namespace_v1.maxterview.metadata[0].name,
+    kubernetes_namespace.portfolio.metadata[0].name,
+    kubernetes_namespace.diagram.metadata[0].name,
+    kubernetes_namespace.maxterview.metadata[0].name,
   ])
 
   metadata {
@@ -263,12 +263,12 @@ resource "kubernetes_secret_v1" "ghcr_credentials_app_ns" {
   }
 }
 
-resource "kubernetes_secret_v1" "diagram_secrets" {
+resource "kubernetes_secret" "diagram_secrets" {
   depends_on = [kubernetes_stateful_set_v1.postgres]
 
   metadata {
     name      = "diagram-secrets"
-    namespace = kubernetes_namespace_v1.diagram.metadata[0].name
+    namespace = kubernetes_namespace.diagram.metadata[0].name
   }
   data = {
     api_key      = var.DIAGRAM_API_KEY
@@ -277,10 +277,10 @@ resource "kubernetes_secret_v1" "diagram_secrets" {
   type = "Opaque"
 }
 
-resource "kubernetes_secret_v1" "maxterview_secrets" {
+resource "kubernetes_secret" "maxterview_secrets" {
   metadata {
     name      = "maxterview-secrets"
-    namespace = kubernetes_namespace_v1.maxterview.metadata[0].name
+    namespace = kubernetes_namespace.maxterview.metadata[0].name
   }
   # Keys are the app's env var names verbatim: the Deployment consumes this with `envFrom`.
   # UPPERCASE only — a lowercase key here would be an env var the app never reads.
@@ -309,10 +309,10 @@ resource "kubernetes_secret_v1" "maxterview_secrets" {
 # reads these keys with `valueFrom` rather than `envFrom`, so a malformed key here cannot block the
 # backend pod. LOKI_USER/LOKI_TOKEN serve both endpoints: same stack instance ID, same access-policy
 # token, widened to metrics:write and traces:write.
-resource "kubernetes_secret_v1" "maxterview_logs" {
+resource "kubernetes_secret" "maxterview_logs" {
   metadata {
     name      = "maxterview-logs"
-    namespace = kubernetes_namespace_v1.maxterview.metadata[0].name
+    namespace = kubernetes_namespace.maxterview.metadata[0].name
   }
   # Keys are the names the Alloy config reads via sys.env().
   data = {
@@ -324,7 +324,7 @@ resource "kubernetes_secret_v1" "maxterview_logs" {
   type = "Opaque"
 }
 
-resource "kubernetes_secret_v1" "argocd_repo_secret" {
+resource "kubernetes_secret" "argocd_repo_secret" {
   depends_on = [helm_release.argocd]
 
   metadata {
@@ -348,11 +348,11 @@ resource "kubectl_manifest" "gitops_app" {
   depends_on = [
     helm_release.argocd,
     helm_release.ingress_nginx,
-    kubernetes_secret_v1.argocd_repo_secret,
-    kubernetes_secret_v1.cloudflare_tunnel_token,
-    kubernetes_secret_v1.ghcr_credentials,
-    kubernetes_secret_v1.diagram_secrets,
-    kubernetes_secret_v1.maxterview_secrets,
+    kubernetes_secret.argocd_repo_secret,
+    kubernetes_secret.cloudflare_tunnel_token,
+    kubernetes_secret.ghcr_credentials,
+    kubernetes_secret.diagram_secrets,
+    kubernetes_secret.maxterview_secrets,
   ]
 
   yaml_body = file(local.app_yaml_path)
