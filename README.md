@@ -220,7 +220,7 @@ Imported into state first (adopt, don't overwrite), now tracked by Terraform.
 
 ## ArgoCD
 
-Installed via `argoproj/argo-helm` (chart `7.7.0`) in the `argocd` namespace with K8s secrets and a root Application CR.
+Installed via `argoproj/argo-helm` in the `argocd` namespace with K8s secrets and a root Application CR.
 
 **Bootstrap:** Terraform applies Helm charts + secrets → applies the root Application via the `kubectl` provider (the **only** direct manifest) → that root App syncs the rest from the GitOps repo. Manifest defaults to `${path.module}/../../../gitops/app.yaml` (resolved at plan time); override via `app_yaml_path` (`infra/k3s/variables.tf`).
 
