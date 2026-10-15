@@ -39,7 +39,7 @@ resource "helm_release" "argocd" {
   namespace        = "argocd"
   create_namespace = true
   version          = "10.10.5"
-  timeout          = 600
+  timeout          = 1800
 }
 
 # --- PostgreSQL (StatefulSet + PVC) ---
