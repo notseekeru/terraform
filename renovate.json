@@ -3,6 +3,18 @@
   "extends": [
     "config:recommended"
   ],
+  "packageRules": [
+    {
+      "description": "Majors wait for approval on the dependency dashboard.",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Batch the small updates into one PR.",
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "non-major dependencies"
+    }
+  ],
   "lockFileMaintenance": {
     "enabled": true,
     "description": "Weekly flake.lock refresh."
