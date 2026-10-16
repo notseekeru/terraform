@@ -6,9 +6,9 @@
 ## Summary
 
 The `argo-cd` chart went from 7.7.0 to 10.10.5, which is Argo CD 2.13.0 to 3.5.5. That rollout
-pulled about a gigabyte of images onto the single Pi node. The node stalled twice, the kubelet
-restarted, and 1 second liveness probes turned the stall into a restart of every long-running
-pod on the machine. CoreDNS lost all of its endpoints, so cluster DNS was down and Argo CD
+pulled about 280 MiB of new images onto the single Pi node. The node went NotReady twice, the
+kubelet restarted, and 1 second liveness probes turned the stall into a restart of every
+long-running pod on the machine. CoreDNS lost all of its endpoints, so cluster DNS was down and Argo CD
 reported `lookup argocd-repo-server on 10.43.0.10:53: connection refused` for every
 Application. Three `terraform apply` runs failed on API timeouts while the chart manifests were
 in fact being applied, which left the helm release record at `pending-upgrade` and then
@@ -32,12 +32,16 @@ in fact being applied, which left the helm release record at `pending-upgrade` a
 | ~23:58 to 00:00 | Apply 4, after deleting the v3 record and raising `timeout` to 1800. `Apply complete! Resources: 0 added, 2 changed, 0 destroyed` in 13s. Hook job completes 00:00:09 |
 | 00:08 to 00:15 | Verification: `make plan MOD=k3s` reports `No changes`, five Applications `Synced`, CRDs byte-identical to v3.5.5 |
 
+Times for the first two applies are approximate. Everything from 23:33 onward comes from cluster
+events and command logs.
+
 ## Root cause
 
 Three causes stack, and none of them is the chart or the provider version.
 
 1. **Node capacity.** One node, 4 CPU, 8 GiB allocatable, k3s `v1.36.2+k3s1`. The rollout
-   replaced seven workloads and pulled roughly a gigabyte of images. Every failed apply failed
+   replaced seven workloads and pulled about 280 MiB of new images, being argocd 3.5.5, dex
+   2.46.0 and redis 8.6.4 as the node reports their sizes. Every failed apply failed
    on a client timeout (`http2: client connection lost`, `cannot patch ... ClusterRole:
    Timeout`, `create: failed to create: Timeout`), never on a manifest error.
 2. **One second probes.** Argo CD ships `timeoutSeconds: 1`, `periodSeconds: 10`,
@@ -63,8 +67,9 @@ Three causes stack, and none of them is the chart or the provider version.
 
 - Cluster DNS down for the CrashLoopBackOff window. Every Application went `Unknown`, and any
   new resolution of a Service name failed, including the apps reaching `postgres.database.svc`.
-- Restarts across the node: local-path-provisioner 18, ingress-nginx-controller 14,
-  cloudflared 13, metrics-server 12, argocd-server 4, argocd-repo-server 3, coredns 2.
+- Pods whose containers restarted inside the 23:54 to 23:57 window, with the lifetime restart
+  count each pod carries: local-path-provisioner 18, ingress-nginx-controller 14, cloudflared 13,
+  metrics-server 12, argocd-server 4, argocd-repo-server 3, coredns 2.
 - metrics-server down, so `kubectl top` returned `Metrics API not available` for a while.
 - Argo CD API and UI unavailable while `argocd-server` crashlooped. Syncs continued through the
   application-controller, and no Application was lost or recreated.
