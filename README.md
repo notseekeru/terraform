@@ -77,7 +77,7 @@ The repo is operator-reproducible, not fresh-clone-self-contained. Before init/p
 4. **`gitops/` repo checked out at `../gitops/`** — `k3s` reads `app.yaml` via `file()` at apply time.
 5. **ArgoCD/GHCR reachable** — the PAT in Infisical must still be valid for the private `gitops` repo.
 
-Then `make init MOD=<m>` re-fetches providers. `.terraform.lock.hcl` and local `*.tfstate` are gitignored, so first init on a machine re-resolves against `~>` floors (a minor drift vector).
+Then `make init MOD=<m>` re-fetches providers. `.terraform.lock.hcl` is committed, so every machine resolves the same provider versions; local `*.tfstate` stays ignored.
 
 ---
 
