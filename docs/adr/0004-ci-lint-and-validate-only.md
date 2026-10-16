@@ -43,9 +43,8 @@ Explicitly out of scope in CI:
   backend supplies real state.
 - **Any secret, any provider credential, any ambient cloud identity.** The workflow is credential-free,
   which is also why it is safe to run on forked PRs.
-- **Lock-file enforcement.** `.terraform.lock.hcl` is committed, so CI validates against the same
-  provider versions the operator runs. A constraint bump has to carry a refreshed lock; Renovate
-  does that in the same PR.
+- **Lock-file enforcement.** `.terraform.lock.hcl` stays gitignored; CI resolves providers fresh, so a
+  constraint bump is exercised rather than silently validated against an old lock.
 
 Escalate only on a concrete trigger (same triggers as ADR 0002): a second applier, non-interactive
 deploys, or a required audit trail. Adding a `plan` job means first solving credential scoping
