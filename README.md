@@ -140,6 +140,7 @@ make init MOD=k3s && make plan MOD=k3s && make apply MOD=k3s
 
 - `docs/incident-2026-10-05-nodefs-disk-pressure-eviction.md` — the kubelet evicted every 10s for 10 hours on nodefs pressure while `systemctl restart k3s` made it look fixed. Read before debugging "ArgoCD keeps crashing" or a missing PreSync hook.
 - `docs/incident-2026-10-12-container-name-reservation-livelock.md` — a power cut left 6 pods in `CreateContainerError` for 2h14m while their containers kept running. Read before debugging "ArgoCD is degraded" that arrives with a dead database, metrics-server and tunnel.
+- `docs/incident-2026-10-15-argocd-3-upgrade-node-stall.md` — the chart 7.7.0 to 10.10.5 bump pulled 1GB of images, stalled the Pi twice and left CoreDNS with no endpoints, while three applies failed on API timeouts after the manifests were already applied. Read before debugging a helm release stuck in `pending-upgrade` or `failed`, or a chart bump that hits its timeout.
 
 Needs Infisical secrets: `POSTGRES_PASSWORD`, `CLOUDFLARE_TOKEN`, `GITHUB_PAT`, `DIAGRAM_API_KEY`, plus the
 maxterview set below. Back up the DB before `destroy`:
