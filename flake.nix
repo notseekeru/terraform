@@ -6,20 +6,26 @@
 
   outputs = { self, nixpkgs, nixpkgs-infisical }:
     let
-      system = "x86_64-linux";
-      pkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
-      infisical = nixpkgs-infisical.legacyPackages.${system}.infisical;
+      systems = [ "x86_64-linux" "aarch64-linux" ];
+      forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f system);
     in
     {
-      devShells.${system}.default = pkgs.mkShell {
-        buildInputs = [
-          infisical
-        ] ++ (with pkgs; [
-          kubectl
-          terraform
-          argocd
-          aws-nuke
-        ]);
-      };
+      devShells = forAllSystems (system:
+        let
+          pkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
+          infisical = nixpkgs-infisical.legacyPackages.${system}.infisical;
+        in
+        {
+          default = pkgs.mkShell {
+            buildInputs = [
+              infisical
+            ] ++ (with pkgs; [
+              kubectl
+              terraform
+              argocd
+              aws-nuke
+            ]);
+          };
+        });
     };
 }
