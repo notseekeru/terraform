@@ -310,7 +310,7 @@ resource "kubernetes_secret" "maxterview_owner_secrets" {
     namespace = kubernetes_namespace.maxterview.metadata[0].name
   }
   data = {
-    MIGRATE_DATABASE_URL = var.MAXTERVIEW_MIGRATE_DATABASE_URL
+    OWNER_DATABASE_URL = var.MAXTERVIEW_OWNER_DATABASE_URL
   }
   type = "Opaque"
 }
