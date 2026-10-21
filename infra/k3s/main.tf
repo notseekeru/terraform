@@ -304,9 +304,9 @@ resource "kubernetes_secret" "maxterview_secrets" {
 }
 
 # Separate from maxterview-secrets because the backend's envFrom would otherwise receive the owner DSN (PLAN.md D12).
-resource "kubernetes_secret" "maxterview_migrate_secrets" {
+resource "kubernetes_secret" "maxterview_owner_secrets" {
   metadata {
-    name      = "maxterview-migrate-secrets"
+    name      = "maxterview-owner-secrets"
     namespace = kubernetes_namespace.maxterview.metadata[0].name
   }
   data = {
