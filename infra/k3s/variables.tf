@@ -117,9 +117,8 @@ variable "MAXTERVIEW_PAYMONGO_WEBHOOK_SECRET" {
 # Reserved (D12): the migrate-role DSN read only by the in-cluster migration Job. Unset = falls
 # back to DATABASE_URL. Not consumed by app code yet.
 variable "MAXTERVIEW_MIGRATE_DATABASE_URL" {
-  description = "Migrate-role Neon DSN for the in-cluster migration Job; empty falls back to DATABASE_URL"
+  description = "Owner Neon DSN for the in-cluster migration Job, in its own Secret so the backend never holds it (PLAN.md D12)"
   sensitive   = true
-  default     = ""
 }
 
 # Empty is a supported state here, unlike LLM_* above: the voice controls disable themselves and say

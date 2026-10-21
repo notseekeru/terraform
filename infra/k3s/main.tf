@@ -286,7 +286,6 @@ resource "kubernetes_secret" "maxterview_secrets" {
   # UPPERCASE only — a lowercase key here would be an env var the app never reads.
   data = {
     DATABASE_URL            = var.MAXTERVIEW_DATABASE_URL
-    MIGRATE_DATABASE_URL    = var.MAXTERVIEW_MIGRATE_DATABASE_URL
     CLERK_JWKS_URL          = var.MAXTERVIEW_CLERK_JWKS_URL
     CLERK_DOMAIN            = var.MAXTERVIEW_CLERK_DOMAIN
     CLERK_AUDIENCE          = var.MAXTERVIEW_CLERK_AUDIENCE
@@ -300,6 +299,19 @@ resource "kubernetes_secret" "maxterview_secrets" {
     # Empty means voice is off, which the consumer states rather than guesses (VOICE.md V7).
     CLOUDFLARE_ACCOUNT_ID = var.MAXTERVIEW_CLOUDFLARE_ACCOUNT_ID
     CLOUDFLARE_API_TOKEN  = var.MAXTERVIEW_CLOUDFLARE_API_TOKEN
+  }
+  type = "Opaque"
+}
+
+# The owner DSN, consumed only by the PreSync migration Job. Separate from maxterview-secrets so
+# the backend pod's envFrom never receives it (PLAN.md D12).
+resource "kubernetes_secret" "maxterview_migrate_secrets" {
+  metadata {
+    name      = "maxterview-migrate-secrets"
+    namespace = kubernetes_namespace.maxterview.metadata[0].name
+  }
+  data = {
+    MIGRATE_DATABASE_URL = var.MAXTERVIEW_MIGRATE_DATABASE_URL
   }
   type = "Opaque"
 }
