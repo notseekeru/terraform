@@ -303,8 +303,7 @@ resource "kubernetes_secret" "maxterview_secrets" {
   type = "Opaque"
 }
 
-# The owner DSN, consumed only by the PreSync migration Job. Separate from maxterview-secrets so
-# the backend pod's envFrom never receives it (PLAN.md D12).
+# Separate from maxterview-secrets because the backend's envFrom would otherwise receive the owner DSN (PLAN.md D12).
 resource "kubernetes_secret" "maxterview_migrate_secrets" {
   metadata {
     name      = "maxterview-migrate-secrets"
