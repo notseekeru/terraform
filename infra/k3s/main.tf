@@ -303,7 +303,7 @@ resource "kubernetes_secret" "maxterview_secrets" {
   type = "Opaque"
 }
 
-# Separate from maxterview-secrets because the backend's envFrom would otherwise receive the owner DSN (PLAN.md D12).
+# Separate from maxterview-secrets because the backend's envFrom would otherwise receive the owner DSN.
 resource "kubernetes_secret" "maxterview_owner_secrets" {
   metadata {
     name      = "maxterview-owner-secrets"

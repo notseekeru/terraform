@@ -114,10 +114,10 @@ variable "MAXTERVIEW_PAYMONGO_WEBHOOK_SECRET" {
   default     = ""
 }
 
-# Reserved (D12): the migrate-role DSN read only by the in-cluster migration Job. Unset = falls
+# The migrate-role DSN read only by the in-cluster migration Job. Unset = falls
 # back to DATABASE_URL. Not consumed by app code yet.
 variable "MAXTERVIEW_MIGRATE_DATABASE_URL" {
-  description = "Owner Neon DSN for the in-cluster migration Job, in its own Secret so the backend never holds it (PLAN.md D12)"
+  description = "Owner Neon DSN for the in-cluster migration Job, in its own Secret so the backend never holds it"
   sensitive   = true
 }
 
