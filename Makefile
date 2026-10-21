@@ -23,7 +23,9 @@ backend_config = -backend-config="bucket=$$TF_VAR_R2_BUCKET" \
 # endpoints.s3 pin to real AWS S3 in infra/aws/provider.tf. Non-AWS modules (k3s,
 # cloudflare) have no such provider and simply run with the var present.
 
-.PHONY: fmt validate init upgradeinit reconfigure plan apply destroy migrate dump secrets verify-db-auth nuke-list
+LOCK_ID ?=
+
+.PHONY: fmt validate init upgradeinit reconfigure plan apply destroy migrate dump secrets verify-db-auth nuke-list unlock
 
 fmt:
 	terraform -chdir=infra/$(MOD) fmt
@@ -73,6 +75,13 @@ nuke-list:
 	@echo '== AWS-NUKE DRY RUN (nothing deleted) =='
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
 		aws-nuke -c $(NUKE_CFG)
+
+# Force-unlock drops the state lock unconditionally. Only for a dead run: a live
+# apply keeps writing while the lock is gone, which corrupts remote state.
+unlock:
+	@test -n "$(LOCK_ID)" || { echo 'LOCK_ID required (from the lock error)'; exit 1; }
+	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
+		terraform -chdir=infra/$(MOD) force-unlock $(LOCK_ID)
 
 reconfigure:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
