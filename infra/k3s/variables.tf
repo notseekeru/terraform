@@ -85,6 +85,12 @@ variable "MAXTERVIEW_LLM_MODEL" {
   }
 }
 
+variable "MAXTERVIEW_LLM_PRO_MODEL" {
+  description = "Pro's interview turn: a larger model on the same provider. Empty falls back to LLM_MODEL"
+  sensitive   = true
+  default     = ""
+}
+
 variable "MAXTERVIEW_LLM_API_KEY" {
   description = "API key for the LLM provider; empty is correct for an unauthenticated self-hosted endpoint"
   sensitive   = true

@@ -292,6 +292,7 @@ resource "kubernetes_secret" "maxterview_secrets" {
     CLERK_SECRET_KEY        = var.MAXTERVIEW_CLERK_SECRET_KEY
     LLM_BASE_URL            = var.MAXTERVIEW_LLM_BASE_URL
     LLM_MODEL               = var.MAXTERVIEW_LLM_MODEL
+    LLM_PRO_MODEL           = var.MAXTERVIEW_LLM_PRO_MODEL
     LLM_API_KEY             = var.MAXTERVIEW_LLM_API_KEY
     BYOK_ENCRYPTION_KEY     = var.MAXTERVIEW_BYOK_ENCRYPTION_KEY
     PAYMONGO_SECRET_KEY     = var.MAXTERVIEW_PAYMONGO_SECRET_KEY
