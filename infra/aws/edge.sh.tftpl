@@ -2,10 +2,10 @@
 set -euo pipefail
 
 dnf install -y nginx unzip policycoreutils-python-utils nftables
-curl -fsSL -o /tmp/awscliv2.zip https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip
+curl -fsSL -o /tmp/awscliv2.zip https://awscli.amazonaws.com/awscli-exe-linux-aarch64-2.39.6.zip
 unzip -q -o /tmp/awscliv2.zip -d /tmp
 /tmp/aws/install --update
-curl -fsSL -o /tmp/cloudflared.rpm https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-aarch64.rpm
+curl -fsSL -o /tmp/cloudflared.rpm https://github.com/cloudflare/cloudflared/releases/download/2026.10.7/cloudflared-linux-aarch64.rpm
 dnf install -y /tmp/cloudflared.rpm
 
 param() {
