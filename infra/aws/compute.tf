@@ -11,7 +11,8 @@ locals {
   # Upgrade path: a separate state for the repository if this ever needs to be one apply.
   ready           = var.lambda_image_uri != ""
   lambdas_enabled = local.ready ? local.lambdas : {}
-  api_host        = try(replace(aws_lambda_function_url.api["api"].function_url, "https://", ""), "")
+  # A trailing slash here would make nginx replace /api/ with / instead of passing the path.
+  api_host = trimsuffix(try(replace(aws_lambda_function_url.api["api"].function_url, "https://", ""), ""), "/")
 }
 
 resource "aws_ecr_repository" "lambda" {
