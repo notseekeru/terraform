@@ -89,6 +89,17 @@ resource "aws_sqs_queue" "review" {
   })
 }
 
+# The URL's own statement covers InvokeFunctionUrl only; anonymous calls also need this one.
+resource "aws_lambda_permission" "api_url_invoke" {
+  for_each = aws_lambda_function_url.api
+
+  statement_id           = "FunctionURLInvokeFunction"
+  action                 = "lambda:InvokeFunction"
+  function_name          = each.value.function_name
+  principal              = "*"
+  function_url_auth_type = "NONE"
+}
+
 resource "aws_lambda_event_source_mapping" "worker" {
   for_each = { for name, fn in aws_lambda_function.this : name => fn if name == "worker" }
 
