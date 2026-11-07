@@ -18,7 +18,8 @@ resource "aws_db_instance" "main" {
   vpc_security_group_ids = [aws_security_group.rds.id]
   publicly_accessible    = false
   multi_az               = false
-  skip_final_snapshot    = true
+  skip_final_snapshot     = true
+  storage_encrypted       = true
   backup_retention_period = 1
   apply_immediately      = true
 }
