@@ -45,6 +45,13 @@ variable "github_repo" {
   default = "notseekeru/sesume"
 }
 
+# GitHub issues the subject claim with the numeric owner and repository IDs, so a trust policy
+# written against repo:owner/name alone stops matching. Both forms are listed.
+variable "github_repo_immutable" {
+  type    = string
+  default = "notseekeru@124259804/sesume@1441552332"
+}
+
 variable "POSTGRES_PASSWORD" {
   type      = string
   sensitive = true
