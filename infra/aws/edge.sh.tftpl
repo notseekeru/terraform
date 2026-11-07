@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-dnf install -y nginx unzip policycoreutils-python-utils
+dnf install -y nginx unzip policycoreutils-python-utils nftables
 curl -fsSL -o /tmp/awscliv2.zip https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip
 unzip -q -o /tmp/awscliv2.zip -d /tmp
 /tmp/aws/install --update
