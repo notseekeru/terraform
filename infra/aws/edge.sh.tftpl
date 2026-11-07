@@ -97,7 +97,17 @@ systemctl enable --now cloudflared
 cat > /etc/sysctl.d/99-sesume-nat.conf <<'SYSCTL'
 net.ipv4.ip_forward = 1
 SYSCTL
-sysctl --system >/dev/null
+sysctl -q --system
+
+cat > /usr/local/bin/sesume-nat <<'NAT'
+#!/bin/bash
+set -euo pipefail
+nft add table ip sesume 2>/dev/null || true
+nft add chain ip sesume post '{ type nat hook postrouting priority srcnat; }' 2>/dev/null || true
+nft flush chain ip sesume post
+nft add rule ip sesume post ip saddr ${vpc_cidr} masquerade
+NAT
+chmod +x /usr/local/bin/sesume-nat
 
 cat > /etc/systemd/system/sesume-nat.service <<'UNIT'
 [Unit]
@@ -108,7 +118,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/sh -c 'iptables -t nat -C POSTROUTING -s ${vpc_cidr} -j MASQUERADE || iptables -t nat -A POSTROUTING -s ${vpc_cidr} -j MASQUERADE'
+ExecStart=/usr/local/bin/sesume-nat
 
 [Install]
 WantedBy=multi-user.target
