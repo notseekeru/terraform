@@ -96,7 +96,7 @@ terraform/
 └── docs/                    # ADRs + incident runbooks
 ```
 
-Each module keeps its own `versions.tf`, `provider.tf`, `variables.tf`, `main.tf`, and split resource files (e.g. `infra/aws/{vpc,compute,storage,database,security,monitoring,secrets,outputs}.tf`). `infra/cloudflare/README.md` is the import-first adoption runbook. Full architecture: `AWS.md`.
+Each module keeps its own `versions.tf`, `provider.tf`, `variables.tf`, `main.tf`, and split resource files (e.g. `infra/aws/{vpc,compute,storage,database,security,monitoring,secrets,outputs}.tf`). `infra/cloudflare/README.md` is the import-first adoption runbook. Full architecture: the `AWS.md` of the sesume repository.
 
 ---
 
