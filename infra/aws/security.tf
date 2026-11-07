@@ -212,7 +212,7 @@ resource "aws_iam_role_policy" "cd" {
       },
       {
         Effect   = "Allow"
-        Action   = ["lambda:UpdateFunctionCode", "lambda:GetFunction"]
+        Action   = ["lambda:UpdateFunctionCode", "lambda:GetFunction", "lambda:GetFunctionConfiguration"]
         Resource = "arn:aws:lambda:${var.region}:${local.account_id}:function:sesume-*"
       }
     ]
