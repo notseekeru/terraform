@@ -93,11 +93,10 @@ resource "aws_sqs_queue" "review" {
 resource "aws_lambda_permission" "api_url_invoke" {
   for_each = aws_lambda_function_url.api
 
-  statement_id           = "FunctionURLInvokeFunction"
-  action                 = "lambda:InvokeFunction"
-  function_name          = each.value.function_name
-  principal              = "*"
-  function_url_auth_type = "NONE"
+  statement_id  = "FunctionURLInvokeFunction"
+  action        = "lambda:InvokeFunction"
+  function_name = each.value.function_name
+  principal     = "*"
 }
 
 resource "aws_lambda_event_source_mapping" "worker" {
