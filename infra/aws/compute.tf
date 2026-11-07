@@ -74,16 +74,6 @@ resource "aws_lambda_function_url" "api" {
   authorization_type = "NONE"
 }
 
-resource "aws_lambda_permission" "api_url" {
-  for_each = aws_lambda_function_url.api
-
-  statement_id           = "FunctionURLAllowPublicAccess"
-  action                 = "lambda:InvokeFunctionUrl"
-  function_name          = each.value.function_name
-  principal              = "*"
-  function_url_auth_type = "NONE"
-}
-
 resource "aws_sqs_queue" "review_dlq" {
   name = "sesume-review-dlq"
 }
