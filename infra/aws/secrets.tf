@@ -1,6 +1,7 @@
 locals {
-  ssm_prefix   = "/sesume"
-  database_url = "postgresql://${aws_db_instance.main.username}:${urlencode(var.POSTGRES_PASSWORD)}@${aws_db_instance.main.address}:5432/${aws_db_instance.main.db_name}"
+  ssm_prefix = "/sesume"
+  # RDS rejects an unencrypted session, so sslmode is not optional.
+  database_url = "postgresql://${aws_db_instance.main.username}:${urlencode(var.POSTGRES_PASSWORD)}@${aws_db_instance.main.address}:5432/${aws_db_instance.main.db_name}?sslmode=require"
 }
 
 # The functions read these at cold start (see backend/src/bootstrap.ts); the edge instance
