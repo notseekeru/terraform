@@ -1,7 +1,8 @@
 locals {
   ssm_prefix = "/sesume"
-  # RDS rejects an unencrypted session, so sslmode is not optional.
-  database_url = "postgresql://${aws_db_instance.main.username}:${urlencode(var.POSTGRES_PASSWORD)}@${aws_db_instance.main.address}:5432/${aws_db_instance.main.db_name}?sslmode=require"
+  # RDS rejects an unencrypted session. pg treats sslmode=require as verify-full, which fails
+  # against RDS's CA, so uselibpqcompat asks for libpq's meaning: encrypt, do not verify.
+  database_url = "postgresql://${aws_db_instance.main.username}:${urlencode(var.POSTGRES_PASSWORD)}@${aws_db_instance.main.address}:5432/${aws_db_instance.main.db_name}?uselibpqcompat=true&sslmode=require"
 }
 
 # The functions read these at cold start (see backend/src/bootstrap.ts); the edge instance
