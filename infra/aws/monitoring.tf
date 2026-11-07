@@ -1,9 +1,15 @@
-resource "aws_sns_topic" "billing_alerts" {
-  name = "billing-alerts"
+resource "aws_sns_topic" "alerts" {
+  name = "sesume-alerts"
+}
+
+resource "aws_sns_topic_subscription" "alert_email" {
+  topic_arn = aws_sns_topic.alerts.arn
+  protocol  = "email"
+  endpoint  = var.ALERT_EMAIL
 }
 
 resource "aws_budgets_budget" "zero_spend" {
-  name              = "zero-spend-budget"
+  name              = "sesume-zero-spend"
   budget_type       = "COST"
   limit_amount      = "1.0"
   limit_unit        = "USD"
@@ -15,14 +21,12 @@ resource "aws_budgets_budget" "zero_spend" {
     threshold                 = 100
     threshold_type            = "PERCENTAGE"
     notification_type         = "ACTUAL"
-    subscriber_sns_topic_arns = [aws_sns_topic.billing_alerts.arn]
+    subscriber_sns_topic_arns = [aws_sns_topic.alerts.arn]
   }
 }
 
 resource "aws_budgets_budget" "credit_cap" {
-  # Guards the ~$200 free-tier credit balance: alerts before the
-  # promotional credits are exhausted, distinct from the zero-spend guardrail.
-  name              = "credit-cap-budget"
+  name              = "sesume-credit-cap"
   budget_type       = "COST"
   limit_amount      = tostring(var.credit_cap_usd)
   limit_unit        = "USD"
@@ -30,42 +34,67 @@ resource "aws_budgets_budget" "credit_cap" {
   time_unit         = "MONTHLY"
 
   notification {
-    # Actual spend hits the credit cap
     comparison_operator       = "GREATER_THAN"
     threshold                 = 95
     threshold_type            = "PERCENTAGE"
     notification_type         = "ACTUAL"
-    subscriber_sns_topic_arns = [aws_sns_topic.billing_alerts.arn]
+    subscriber_sns_topic_arns = [aws_sns_topic.alerts.arn]
   }
 
   notification {
-    # Projected spend about to exceed the credit cap
     comparison_operator       = "GREATER_THAN"
     threshold                 = 90
     threshold_type            = "PERCENTAGE"
     notification_type         = "FORECASTED"
-    subscriber_sns_topic_arns = [aws_sns_topic.billing_alerts.arn]
+    subscriber_sns_topic_arns = [aws_sns_topic.alerts.arn]
   }
 }
 
-resource "aws_sns_topic_subscription" "billing_alert_email" {
-  topic_arn = aws_sns_topic.billing_alerts.arn
-  protocol  = "email"
-  endpoint  = var.ALERT_EMAIL
+resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
+  for_each = aws_lambda_function.this
+
+  alarm_name          = "sesume-${each.key}-errors"
+  namespace           = "AWS/Lambda"
+  metric_name         = "Errors"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+
+  dimensions = { FunctionName = each.value.function_name }
 }
 
-resource "aws_cloudwatch_metric_alarm" "asg_cpu" {
-  alarm_name          = "asg-cpu-high"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "2"
-  metric_name         = "CPUUtilization"
+resource "aws_cloudwatch_metric_alarm" "review_dlq" {
+  alarm_name          = "sesume-review-dlq"
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  statistic           = "Maximum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+
+  dimensions = { QueueName = aws_sqs_queue.review_dlq.name }
+}
+
+resource "aws_cloudwatch_metric_alarm" "edge_status" {
+  count = length(aws_instance.edge)
+
+  alarm_name          = "sesume-edge-status"
   namespace           = "AWS/EC2"
-  period              = "300"
-  statistic           = "Average"
-  threshold           = "80"
-  dimensions = {
-    AutoScalingGroupName = aws_autoscaling_group.main.name
-  }
+  metric_name         = "StatusCheckFailed"
+  statistic           = "Maximum"
+  period              = 60
+  evaluation_periods  = 5
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "breaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
 
-  alarm_actions = [aws_sns_topic.billing_alerts.arn]
+  dimensions = { InstanceId = aws_instance.edge[0].id }
 }

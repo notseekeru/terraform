@@ -1,13 +1,20 @@
-# 1. SSM Parameter for DB Password
-resource "aws_ssm_parameter" "POSTGRES_PASSWORD" {
-  name  = "/app/POSTGRES_PASSWORD"
-  type  = "SecureString"
-  value = var.POSTGRES_PASSWORD
+locals {
+  ssm_prefix   = "/sesume"
+  database_url = "postgresql://${aws_db_instance.main.username}:${urlencode(var.POSTGRES_PASSWORD)}@${aws_db_instance.main.address}:5432/${aws_db_instance.main.db_name}"
 }
 
-# 2. SSM Parameter for DB Endpoint (for EC2 injection)
-resource "aws_ssm_parameter" "db_endpoint" {
-  name  = "/app/db_endpoint"
-  type  = "String"
-  value = aws_db_instance.main.address
+# The functions read these at cold start (see backend/src/bootstrap.ts); the edge instance
+# reads the tunnel and origin tokens at boot. Nothing is injected as Lambda env.
+resource "aws_ssm_parameter" "app" {
+  for_each = {
+    database_url = local.database_url
+    auth_secret  = var.AUTH_SECRET
+    data_key     = var.DATA_KEY
+    origin_token = var.ORIGIN_TOKEN
+    tunnel_token = data.cloudflare_zero_trust_tunnel_cloudflared_token.sesume.token
+  }
+
+  name  = "${local.ssm_prefix}/${each.key}"
+  type  = "SecureString"
+  value = each.value
 }

@@ -10,14 +10,57 @@ variable "vpc_cidr" {
 
 variable "instance_type" {
   type    = string
-  default = "t4g.micro" # ARM-based, better performance/watt
+  default = "t4g.micro"
 }
 
 variable "db_instance_class" {
   type    = string
   default = "db.t4g.micro"
 }
+
+variable "db_engine_version" {
+  type    = string
+  default = "18.6"
+}
+
+variable "domain" {
+  type    = string
+  default = "sesume.seekeru.tech"
+}
+
+variable "cloudflare_zone_id" {
+  type    = string
+  default = "5a1a5f826d5a3398dc78ba360e24dfa0"
+}
+
+# Empty until the lambda image exists in ECR. The first apply creates the repository only,
+# the push fills it, the second apply creates the functions.
+variable "lambda_image_uri" {
+  type    = string
+  default = ""
+}
+
+variable "github_repo" {
+  type    = string
+  default = "notseekeru/sesume"
+}
+
 variable "POSTGRES_PASSWORD" {
+  type      = string
+  sensitive = true
+}
+
+variable "AUTH_SECRET" {
+  type      = string
+  sensitive = true
+}
+
+variable "DATA_KEY" {
+  type      = string
+  sensitive = true
+}
+
+variable "ORIGIN_TOKEN" {
   type      = string
   sensitive = true
 }
@@ -25,32 +68,19 @@ variable "POSTGRES_PASSWORD" {
 variable "ALERT_EMAIL" {
   type      = string
   sensitive = true
-  # Injected via infisical secret ALERT_EMAIL (TF_VAR_ALERT_EMAIL)
 }
 
 variable "credit_cap_usd" {
   type    = number
   default = 190.0
-  # Free-tier promotional credit balance (~$100 + $100 explore); alarm before exhaustion
-}
-
-variable "ALB_DOMAIN" {
-  type    = string
-  default = ""
-  # Custom domain (e.g. alb.seekeru.tech) for ACM HTTPS on the ALB.
-  # Empty => ALB stays HTTP:80 only and no DNS record is managed.
-  # When set: infra/aws creates its own Cloudflare records (see compute.tf)
-  # pointing at the ALB and auto-issuing the ACM cert via the validation CNAME.
 }
 
 variable "CLOUDFLARE_API_TOKEN" {
   type      = string
   sensitive = true
-  # Injected via infisical TF_VAR_CLOUDFLARE_API_TOKEN (same as infra/cloudflare).
 }
 
-variable "cloudflare_zone_id" {
-  type    = string
-  default = "5a1a5f826d5a3398dc78ba360e24dfa0" # seekeru.tech
+variable "CLOUDFLARE_ACCOUNT_ID" {
+  type      = string
+  sensitive = true
 }
-

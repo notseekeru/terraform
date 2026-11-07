@@ -87,7 +87,7 @@ Then `make init MOD=<m>` re-fetches providers. `.terraform.lock.hcl` and local `
 terraform/
 ├── infra/                   # Terraform root modules
 │   ├── k3s/                 #   state #1 — k3s cluster (the deployment target)
-│   ├── aws/                 #   state #2 — AWS sandbox (see AWS.md)
+│   ├── aws/                 #   state #2 — the sesume stack (see infra/aws)
 │   └── cloudflare/          #   state #3 — Cloudflare DNS + zone settings
 ├── Makefile                 # Workflow targets (accepts MOD=, ENV=, SECRETS_PATH=)
 ├── flake.nix                # Nix dev shell definition
@@ -189,17 +189,20 @@ card renders read-only and writes answer 503 — so rotation is a `make apply MO
 
 ## AWS Module (Cloud)
 
-`infra/aws/` (state #2) is an AWS sandbox: VPC + public subnets, an auto-scaling EC2 web tier behind an ALB, single-AZ RDS PostgreSQL, and a private S3 bucket served via CloudFront (OAC). State still lives in R2.
+`infra/aws/` (state #2) runs the sesume stack: a VPC with one public and two private subnets, a `t4g.micro` edge instance behind a Cloudflare tunnel (nginx, the tunnel connector, and the NAT for the private subnets), single-AZ RDS PostgreSQL in the private subnets, an SQS review queue with a dead-letter queue, an ECR repository, Lambda functions for the API, the review worker and migrations, and a private S3 bucket holding the built frontend. State lives in R2.
 
-**Credentials** (Infisical): `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `TF_VAR_ALERT_EMAIL`, and the `TF_VAR_R2_*` backend pair.
+**Credentials** (Infisical): `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `TF_VAR_POSTGRES_PASSWORD`, `TF_VAR_AUTH_SECRET`, `TF_VAR_DATA_KEY`, `TF_VAR_ORIGIN_TOKEN`, `TF_VAR_ALERT_EMAIL`, `TF_VAR_CLOUDFLARE_ACCOUNT_ID`, `TF_VAR_CLOUDFLARE_API_TOKEN`, and the `TF_VAR_R2_*` backend pair.
 
 Notable wiring:
 
-- **ALB** (CPU target-tracking ASG) with ELB health checks; **S3+CloudFront** for static assets; **CloudWatch** CPU alarm + zero-spend/credit-cap budgets → SNS (`TF_VAR_ALERT_EMAIL`; confirm the subscription once).
-- **HTTPS is optional & automatic** — set `ALB_DOMAIN` (here `alb.seekeru.tech`): the module's aliased `cloudflare` provider creates the `alb.*` CNAME + ACM validation CNAME, and `aws_acm_certificate_validation` waits until ISSUED before binding :443. No dashboard step. ALB records are deliberately kept in `infra/aws` (not `infra/cloudflare`) so each module is self-contained.
-- **DB user:** `dbadmin` (PG reserves `admin`).
+- **No ALB, no NAT gateway, no CloudFront, no ACM.** The tunnel is the front door and the instance does the NAT work; the Cloudflare record is created by this module rather than by `infra/cloudflare`.
+- **The edge instance holds no application secret.** It fetches the tunnel and origin tokens from SSM at boot and proxies `/api` to the API Lambda's Function URL.
+- **The functions read their config from SSM at cold start** (`/sesume/database_url`, `auth_secret`, `data_key`, `origin_token`), so nothing is injected as a Lambda environment variable.
+- **CI deploys itself** through a GitHub OIDC role (`sesume-cd`): the image to ECR, `update-function-code` on the three functions, the frontend to the S3 bucket. No stored keys.
+- **The first apply cannot create the functions**, because a container image has to exist first. Apply with `lambda_image_uri` empty, push the image, then apply with it set.
+- **DB user:** `sesume`.
 
-> Deployment notes, verified endpoints, the R2/AWS provider endpoint split, upgrade paths & revalidation: see **`AWS.md`**.
+> Architecture, IAM matrix and what is deliberately absent: `AWS.md` in the sesume repository.
 
 ## Cloudflare Module (DNS)
 
@@ -216,7 +219,7 @@ Notable wiring:
 
 Imported into state first (adopt, don't overwrite), now tracked by Terraform.
 
-**Left in the dashboard / owned elsewhere:** Clerk SaaS records (`accounts`, `clerk`, `clk._domainkey`, `clkmail`…), and the AWS ALB `alb.seekeru.tech` + ACM validation CNAME (owned by `infra/aws`), and any future statically-addressed record.
+**Left in the dashboard / owned elsewhere:** Clerk SaaS records (`accounts`, `clerk`, `clk._domainkey`, `clkmail`…), and the `sesume.seekeru.tech` record (owned by `infra/aws`, created with its tunnel), and any future statically-addressed record.
 
 **Workflow** — edit the `records` map in `infra/cloudflare/variables.tf`, then plan/apply. To adopt a dashboard-created record, import it before config lands or apply will duplicate it — see `infra/cloudflare/README.md` for the full runbook + `terraform import`.
 

@@ -1,20 +1,23 @@
-output "alb_dns_name" {
-  description = "The DNS name of the Application Load Balancer"
-  value       = aws_lb.main.dns_name
+output "app_url" {
+  value = "https://${var.domain}"
 }
 
-output "cloudfront_domain" {
-  description = "The domain name of the CloudFront distribution"
-  value       = aws_cloudfront_distribution.s3_dist.domain_name
+output "api_function_url" {
+  value = try(aws_lambda_function_url.api["api"].function_url, "")
 }
 
-output "ALB_DOMAIN_validation_cname" {
-  description = "Informational: the ACM validation CNAME(s) (auto-created in Cloudflare by this module when ALB_DOMAIN is set; empty if no domain)"
-  value = var.ALB_DOMAIN != "" ? [
-    for r in aws_acm_certificate.alb[0].domain_validation_options : {
-      name  = r.resource_record_name
-      type  = r.resource_record_type
-      value = r.resource_record_value
-    }
-  ] : []
+output "ecr_repository_url" {
+  value = aws_ecr_repository.lambda.repository_url
+}
+
+output "edge_ip" {
+  value = aws_eip.edge.public_ip
+}
+
+output "database_endpoint" {
+  value = aws_db_instance.main.address
+}
+
+output "tunnel_id" {
+  value = cloudflare_zero_trust_tunnel_cloudflared.sesume.id
 }

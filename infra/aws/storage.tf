@@ -1,9 +1,11 @@
-resource "aws_s3_bucket" "static_assets" {
-  bucket_prefix = "my-portfolio-assets-"
+resource "aws_s3_bucket" "dist" {
+  bucket = "sesume-dist-${local.account_id}"
+
+  tags = { Name = "sesume-dist" }
 }
 
-resource "aws_s3_bucket_public_access_block" "static_assets" {
-  bucket = aws_s3_bucket.static_assets.id
+resource "aws_s3_bucket_public_access_block" "dist" {
+  bucket = aws_s3_bucket.dist.id
 
   block_public_acls       = true
   block_public_policy     = true
@@ -11,62 +13,20 @@ resource "aws_s3_bucket_public_access_block" "static_assets" {
   restrict_public_buckets = true
 }
 
-resource "aws_s3_bucket_policy" "static_assets" {
-  bucket = aws_s3_bucket.static_assets.id
+resource "aws_s3_bucket_policy" "dist_tls" {
+  bucket = aws_s3_bucket.dist.id
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid       = "CloudFront-OAC-GetObject"
-      Effect    = "Allow"
-      Principal = { Service = "cloudfront.amazonaws.com" }
-      Action    = "s3:GetObject"
-      Resource = [
-        aws_s3_bucket.static_assets.arn,
-        "${aws_s3_bucket.static_assets.arn}/*",
-      ]
+      Sid       = "DenyUnencryptedTransport"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource  = [aws_s3_bucket.dist.arn, "${aws_s3_bucket.dist.arn}/*"]
       Condition = {
-        StringEquals = {
-          "aws:SourceArn" = aws_cloudfront_distribution.s3_dist.arn
-        }
+        Bool = { "aws:SecureTransport" = "false" }
       }
     }]
   })
-}
-
-resource "aws_cloudfront_origin_access_control" "oac" {
-  name                              = "s3-oac"
-  origin_access_control_origin_type = "s3"
-  signing_behavior                  = "always"
-  signing_protocol                  = "sigv4"
-}
-
-resource "aws_cloudfront_distribution" "s3_dist" {
-  enabled             = true
-  default_root_object = "index.html"
-
-  origin {
-    domain_name              = aws_s3_bucket.static_assets.bucket_regional_domain_name
-    origin_id                = "s3-origin"
-    origin_access_control_id = aws_cloudfront_origin_access_control.oac.id
-  }
-
-  default_cache_behavior {
-    allowed_methods        = ["GET", "HEAD"]
-    cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "s3-origin"
-    viewer_protocol_policy = "redirect-to-https"
-    forwarded_values {
-      query_string = false
-      cookies { forward = "none" }
-    }
-  }
-
-  restrictions {
-    geo_restriction { restriction_type = "none" }
-  }
-
-  viewer_certificate {
-    cloudfront_default_certificate = true
-  }
 }
