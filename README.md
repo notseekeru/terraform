@@ -189,16 +189,18 @@ card renders read-only and writes answer 503 — so rotation is a `make apply MO
 
 ## AWS Module (Cloud)
 
-`infra/aws/` (state #2) runs the sesume stack: a VPC with one public and two private subnets, a `t4g.micro` edge instance behind a Cloudflare tunnel (nginx, the tunnel connector, and the NAT for the private subnets), single-AZ RDS PostgreSQL in the private subnets, an SQS review queue with a dead-letter queue, an ECR repository, Lambda functions for the API, the review worker and migrations, and a private S3 bucket holding the built frontend. State lives in R2.
+`infra/aws/` (state #2) runs the sesume stack: a VPC with one public and two private subnets, a `t4g.micro` edge instance behind a Cloudflare tunnel (nginx, the tunnel connector, and the NAT for the private subnets), single-AZ encrypted RDS PostgreSQL in the private subnets, an SQS review queue with a dead-letter queue, an ECR repository, Lambda functions for the API, the review worker, migrations and the liveness probe, and a private S3 bucket holding the built frontend. State lives in R2.
 
-**Credentials** (Infisical): `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `TF_VAR_POSTGRES_PASSWORD`, `TF_VAR_AUTH_SECRET`, `TF_VAR_DATA_KEY`, `TF_VAR_ORIGIN_TOKEN`, `TF_VAR_ALERT_EMAIL`, `TF_VAR_CLOUDFLARE_ACCOUNT_ID`, `TF_VAR_CLOUDFLARE_API_TOKEN`, and the `TF_VAR_R2_*` backend pair.
+**Credentials** (Infisical): `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `TF_VAR_POSTGRES_PASSWORD`, `TF_VAR_AUTH_SECRET`, `TF_VAR_DATA_KEY`, `TF_VAR_ORIGIN_TOKEN`, `TF_VAR_ALERT_EMAIL`, `TF_VAR_CLOUDFLARE_ACCOUNT_ID`, `TF_VAR_CLOUDFLARE_API_TOKEN`, `TF_VAR_lambda_image_uri`, and the `TF_VAR_R2_*` backend pair.
 
 Notable wiring:
 
-- **No ALB, no NAT gateway, no CloudFront, no ACM.** The tunnel is the front door and the instance does the NAT work; the Cloudflare record is created by this module rather than by `infra/cloudflare`.
+- **No ALB, no NAT gateway, no CloudFront, no ACM.** The tunnel is the front door and the instance does the NAT work with an nft rule; the Cloudflare record is created by this module rather than by `infra/cloudflare`.
 - **The edge instance holds no application secret.** It fetches the tunnel and origin tokens from SSM at boot and proxies `/api` to the API Lambda's Function URL.
-- **The functions read their config from SSM at cold start** (`/sesume/database_url`, `auth_secret`, `data_key`, `origin_token`), so nothing is injected as a Lambda environment variable.
-- **CI deploys itself** through a GitHub OIDC role (`sesume-cd`): the image to ECR, `update-function-code` on the three functions, the frontend to the S3 bucket. No stored keys.
+- **The functions read their config from SSM at cold start** (`/sesume/database_url`, `auth_secret`, `data_key`, `origin_token`), so nothing is injected as a Lambda environment variable. `CONFIG_REVISION` carries the parameter versions, so a secret change replaces the warm containers instead of leaving them on the old value.
+- **CI deploys itself** through a GitHub OIDC role (`sesume-cd`): the image to ECR, the migrator rolled and invoked, then the API and worker rolled, then the frontend to the S3 bucket. No stored keys.
+- **The database keeps one day of backups, is encrypted at rest, and has deletion protection on.** A `make destroy MOD=aws` fails until that flag is flipped in `infra/aws/database.tf`; the final snapshot is named `sesume-final`, so a second destroy needs that snapshot deleted first.
+- **The liveness probe lives outside the VPC** so it can still report when the edge is the broken part. It runs every five minutes and its failures land on `sesume-probe-errors`.
 - **The first apply cannot create the functions**, because a container image has to exist first. Apply with `lambda_image_uri` empty, push the image, then apply with it set.
 - **DB user:** `sesume`.
 
@@ -297,11 +299,11 @@ make destroy MOD=k3s
 make destroy MOD=aws
 ```
 
-Each module destroys independently.
+Each module destroys independently. The AWS module refuses to destroy while `deletion_protection` is on: flip it in `infra/aws/database.tf`, apply, then destroy. Deleting also writes the final snapshot `sesume-final`, and a later destroy collides with it until that snapshot is removed by hand.
 
 ### Cost control (do NOT skip)
 
-Teardown the AWS module with `make destroy MOD=aws` — **not** aws-nuke. `destroy` removes managed resources in dependency order and empties R2 state so a stale `plan` can't recreate them. Cost alarms (`zero_spend` at plan, `credit_cap` at 95% actual / 90% forecast) email via the `billing-alerts` SNS topic — trust them as the tripwire for normal exits.
+Teardown the AWS module with `make destroy MOD=aws` — **not** aws-nuke. `destroy` removes managed resources in dependency order and empties R2 state so a stale `plan` can't recreate them. Cost alarms (`sesume-zero-spend` at plan, `sesume-credit-cap` at 95% actual / 90% forecast) email via the `sesume-alerts` SNS topic — trust them as the tripwire for normal exits.
 
 ### aws-nuke — last-resort orphan cleanup (NOT routine teardown)
 
