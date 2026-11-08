@@ -57,9 +57,10 @@ resource "aws_lambda_function" "this" {
 
   environment {
     variables = {
-      SSM_PREFIX      = local.ssm_prefix
-      CONFIG_REVISION = local.config_revision
-      PROBE_URL       = "https://${var.domain}/api/healthz"
+      SSM_PREFIX       = local.ssm_prefix
+      CONFIG_REVISION  = local.config_revision
+      PROBE_URL        = "https://${var.domain}/api/healthz"
+      REVIEW_QUEUE_URL = aws_sqs_queue.review.url
     }
   }
 

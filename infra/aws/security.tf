@@ -146,7 +146,7 @@ resource "aws_iam_role_policy" "lambda" {
       },
       {
         Effect   = "Allow"
-        Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility", "sqs:GetQueueAttributes"]
+        Action   = ["sqs:SendMessage", "sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility", "sqs:GetQueueAttributes"]
         Resource = aws_sqs_queue.review.arn
       }
     ]
