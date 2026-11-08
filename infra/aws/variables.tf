@@ -72,6 +72,22 @@ variable "ORIGIN_TOKEN" {
   sensitive = true
 }
 
+# Reused from the maxterview secrets, which speak the same OpenAI-compatible base URL shape.
+variable "MAXTERVIEW_LLM_BASE_URL" {
+  type      = string
+  sensitive = true
+}
+
+variable "MAXTERVIEW_LLM_MODEL" {
+  type      = string
+  sensitive = true
+}
+
+variable "MAXTERVIEW_LLM_API_KEY" {
+  type      = string
+  sensitive = true
+}
+
 variable "ALERT_EMAIL" {
   type      = string
   sensitive = true
