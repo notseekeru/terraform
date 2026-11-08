@@ -44,7 +44,9 @@ OnUnitActiveSec=300
 WantedBy=timers.target
 UNIT
 
-printf 'proxy_set_header X-Origin-Token %s;\n' "$(param origin_token)" > /etc/nginx/sesume-origin.conf
+printf 'proxy_set_header X-Origin-Token %s;\n' "$(param origin_token)" > /tmp/sesume-origin.conf
+install -m 640 -o root -g nginx /tmp/sesume-origin.conf /etc/nginx/sesume-origin.conf
+rm -f /tmp/sesume-origin.conf
 
 cat > /etc/nginx/nginx.conf <<'NGINXCONF'
 user nginx;
@@ -120,6 +122,7 @@ systemctl enable --now sesume-dist-sync.timer
 systemctl enable --now nginx
 
 cloudflared service install "$(param tunnel_token)"
+chmod 600 /etc/systemd/system/cloudflared.service
 systemctl enable --now cloudflared
 
 cat > /etc/sysctl.d/99-sesume-nat.conf <<'SYSCTL'
