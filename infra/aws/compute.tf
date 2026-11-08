@@ -14,6 +14,9 @@ locals {
   lambdas_enabled = local.ready ? local.lambdas : {}
   # A trailing slash here would make nginx replace /api/ with / instead of passing the path.
   api_host = trimsuffix(try(replace(aws_lambda_function_url.api["api"].function_url, "https://", ""), ""), "/")
+  # Bumping this on every parameter version is what makes Lambda replace the warm containers,
+  # which are the only reason a rotated secret would otherwise keep being served from memory.
+  config_revision = join("-", [for key in sort(keys(aws_ssm_parameter.app)) : aws_ssm_parameter.app[key].version])
 }
 
 resource "aws_ecr_repository" "lambda" {
@@ -54,8 +57,9 @@ resource "aws_lambda_function" "this" {
 
   environment {
     variables = {
-      SSM_PREFIX = local.ssm_prefix
-      PROBE_URL  = "https://${var.domain}/api/healthz"
+      SSM_PREFIX      = local.ssm_prefix
+      CONFIG_REVISION = local.config_revision
+      PROBE_URL       = "https://${var.domain}/api/healthz"
     }
   }
 
