@@ -33,11 +33,18 @@ variable "cloudflare_zone_id" {
   default = "5a1a5f826d5a3398dc78ba360e24dfa0"
 }
 
-# Empty until the lambda image exists in ECR. The first apply creates the repository only,
-# the push fills it, the second apply creates the functions.
+# Read only when a function is first created. CD owns the image after that, via
+# update-function-code, and the function resources ignore image_uri for exactly that reason.
 variable "lambda_image_uri" {
-  type    = string
-  default = ""
+  type = string
+}
+
+# The cold-account switch: apply with false to create the repository and everything that does not
+# need an image, push, then apply with true. A missing image used to destroy the functions and the
+# edge instance; an explicit false is the only thing that does now.
+variable "create_functions" {
+  type    = bool
+  default = true
 }
 
 variable "github_repo" {

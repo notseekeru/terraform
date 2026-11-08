@@ -203,7 +203,7 @@ Notable wiring:
 - **The liveness probe lives outside the VPC** so it can still report when the edge is the broken part. It runs every five minutes and its failures land on `sesume-probe-errors`.
 - **One box, one AZ, for now.** It terminates the tunnel and NATs the private subnets, so a reboot is an outage for ingress and for the worker's internet egress. Acceptable at single-owner scale; the path to more users is a second AZ with an ALB and a NAT gateway, or moving the API off the box entirely. Nothing else here assumes one instance.
 - **The edge is configured once, at boot.** `edge.sh.tftpl` renders into EC2 user data, so cloud-init runs it on first boot and never again: no drift correction, no routine patching, and a change only lands by replacing the instance (`user_data_replace_on_change`). Failures are only visible in `/var/log/cloud-init-output.log` on the box, reachable through Session Manager.
-- **The first apply cannot create the functions**, because a container image has to exist first. Apply with `lambda_image_uri` empty, push the image, then apply with it set.
+- **The first apply on a cold account cannot create the functions**, because a container image has to exist first. Apply with `TF_VAR_create_functions=false`, push the image, then apply with it back at its default of `true`. `lambda_image_uri` is only read at creation; CD owns the image afterwards.
 - **DB user:** `sesume`.
 
 > Architecture, IAM matrix and what is deliberately absent: `AWS.md` in the sesume repository.

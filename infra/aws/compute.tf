@@ -7,10 +7,9 @@ locals {
   }
 
   # AI HERE: a container function cannot be created before its image exists, and the edge
-  # instance cannot boot before the Function URL it proxies to exists, so the first apply
-  # creates everything that has no image dependency. Ceiling: two applies on a cold account.
-  # Upgrade path: a separate state for the repository if this ever needs to be one apply.
-  ready           = var.lambda_image_uri != ""
+  # instance cannot boot before the Function URL it proxies to exists, so a cold account applies
+  # twice. Ceiling: two applies. Upgrade path: a separate state for the repository.
+  ready           = var.create_functions
   lambdas_enabled = local.ready ? local.lambdas : {}
   # A trailing slash here would make nginx replace /api/ with / instead of passing the path.
   api_host = trimsuffix(try(replace(aws_lambda_function_url.api["api"].function_url, "https://", ""), ""), "/")
