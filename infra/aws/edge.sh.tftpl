@@ -71,6 +71,12 @@ http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
 
+    # Not in the stock mime.types, and the pdf worker is shipped as .mjs, which the browser
+    # refuses as a module script when it arrives as octet-stream.
+    types {
+        application/javascript mjs;
+    }
+
     include /etc/nginx/conf.d/*.conf;
 }
 NGINXCONF
