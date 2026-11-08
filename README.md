@@ -201,6 +201,8 @@ Notable wiring:
 - **CI deploys itself** through a GitHub OIDC role (`sesume-cd`): the image to ECR, the migrator rolled and invoked, then the API and worker rolled, then the frontend to the S3 bucket. No stored keys.
 - **The database keeps one day of backups, is encrypted at rest, and has deletion protection on.** A `make destroy MOD=aws` fails until that flag is flipped in `infra/aws/database.tf`; the final snapshot is named `sesume-final`, so a second destroy needs that snapshot deleted first.
 - **The liveness probe lives outside the VPC** so it can still report when the edge is the broken part. It runs every five minutes and its failures land on `sesume-probe-errors`.
+- **One box, one AZ, for now.** It terminates the tunnel and NATs the private subnets, so a reboot is an outage for ingress and for the worker's internet egress. Acceptable at single-owner scale; the path to more users is a second AZ with an ALB and a NAT gateway, or moving the API off the box entirely. Nothing else here assumes one instance.
+- **The edge is configured once, at boot.** `edge.sh.tftpl` renders into EC2 user data, so cloud-init runs it on first boot and never again: no drift correction, no routine patching, and a change only lands by replacing the instance (`user_data_replace_on_change`). Failures are only visible in `/var/log/cloud-init-output.log` on the box, reachable through Session Manager.
 - **The first apply cannot create the functions**, because a container image has to exist first. Apply with `lambda_image_uri` empty, push the image, then apply with it set.
 - **DB user:** `sesume`.
 
