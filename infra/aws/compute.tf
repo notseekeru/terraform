@@ -1,8 +1,9 @@
 locals {
   lambdas = {
-    api     = { command = "dist/lambda.handler", timeout = 60, memory_size = 1024 }
-    worker  = { command = "dist/worker.handler", timeout = 300, memory_size = 1024 }
-    migrate = { command = "dist/migrate.handler", timeout = 300, memory_size = 1024 }
+    api     = { command = "dist/lambda.handler", timeout = 60, memory_size = 1024, vpc = true }
+    worker  = { command = "dist/worker.handler", timeout = 300, memory_size = 1024, vpc = true }
+    migrate = { command = "dist/migrate.handler", timeout = 300, memory_size = 1024, vpc = true }
+    probe   = { command = "dist/probe.handler", timeout = 30, memory_size = 512, vpc = false }
   }
 
   # AI HERE: a container function cannot be created before its image exists, and the edge
@@ -52,12 +53,19 @@ resource "aws_lambda_function" "this" {
   }
 
   environment {
-    variables = { SSM_PREFIX = local.ssm_prefix }
+    variables = {
+      SSM_PREFIX = local.ssm_prefix
+      PROBE_URL  = "https://${var.domain}/api/healthz"
+    }
   }
 
-  vpc_config {
-    subnet_ids         = aws_subnet.private[*].id
-    security_group_ids = [aws_security_group.lambda.id]
+  dynamic "vpc_config" {
+    for_each = each.value.vpc ? [1] : []
+
+    content {
+      subnet_ids         = aws_subnet.private[*].id
+      security_group_ids = [aws_security_group.lambda.id]
+    }
   }
 
   depends_on = [aws_iam_role_policy.lambda]
@@ -73,6 +81,29 @@ resource "aws_lambda_function_url" "api" {
 
   function_name      = each.value.function_name
   authorization_type = "NONE"
+}
+
+resource "aws_cloudwatch_event_rule" "probe" {
+  name                = "sesume-probe"
+  schedule_expression = "rate(5 minutes)"
+}
+
+# Outside the VPC on purpose: the probe has to survive the edge being the broken part.
+resource "aws_cloudwatch_event_target" "probe" {
+  for_each = { for name, fn in aws_lambda_function.this : name => fn if name == "probe" }
+
+  rule = aws_cloudwatch_event_rule.probe.name
+  arn  = each.value.arn
+}
+
+resource "aws_lambda_permission" "probe_events" {
+  for_each = { for name, fn in aws_lambda_function.this : name => fn if name == "probe" }
+
+  statement_id  = "AllowEventBridgeInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = each.value.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.probe.arn
 }
 
 resource "aws_sqs_queue" "review_dlq" {
