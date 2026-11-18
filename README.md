@@ -17,51 +17,12 @@
 
 `make` is optional (workflow targets). Secrets are not shipped in the repo — see [Fresh clone](#fresh-clone-on-a-new-device).
 
----
-
-## Remote state (R2) & locking
-
-State lives in a **Cloudflare R2 bucket** (`s3` backend) under a per-module key — no committed local state.
-
-| Module       | State key                                | Backend |
-| ------------ | ---------------------------------------- | ------- |
-| `k3s`        | `terraform/k3s/terraform.tfstate`        | s3      |
-| `aws`        | `terraform/aws/terraform.tfstate`        | s3      |
-| `cloudflare` | `terraform/cloudflare/terraform.tfstate` | s3      |
-
-**How the R2 endpoint is delivered (read once):** the s3 backend and the AWS provider both read the ambient `AWS_*` namespace, so they must be kept from colliding:
-
-- R2 creds stay namespaced `TF_VAR_R2_*` (`TF_VAR_R2_BUCKET`, `..._ACCESS_KEY_ID`, `..._SECRET_ACCESS_KEY`); AWS creds stay `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`. Never use a bare `AWS_*` name for R2 creds.
-- The **R2 endpoint** is the ambient `AWS_ENDPOINT_URL_S3`, present on **every** run because the s3 backend needs it to reach R2 (init **and** plan/apply/refresh/destroy). Same var on a fresh box: set it to `https://<account>.r2.cloudflarestorage.com`.
-- Because that var is also read by the AWS provider, `infra/aws/provider.tf` pins `endpoints { s3 = "https://s3.ap-southeast-1.amazonaws.com" }`. That pin — not an env `unset` — keeps real `aws_s3_bucket*` calls in AWS.
-
-> **Do not** `unset AWS_ENDPOINT_URL_S3` around plan/apply/refresh/destroy — that starves the backend's own R2 connection. Removing or weakening the `aws` provider pin routes AWS bucket calls to R2 (`access key has length 20, should be 32`). Full rationale + history: **ADR 0001** (`docs/adr/0001-r2-endpoint-ambient-env-provider-pin.md`).
-
-Backend settings live inline in each module's `versions.tf` `backend "s3"` block. Static fields (`skip_*`, `use_lockfile`) are inline; `bucket`/`key`/`region` and the two R2 creds come from `-backend-config` flags in the Makefile (init targets run via `/bin/sh -c` so `$TF_VAR_R2_*` expands). After `init`, the binding caches in `infra/<MOD>/.terraform/`. First-time push of pre-existing local state: `make migrate MOD=<m>`.
-
-### Operating rules
-
-When no CI stage runs and only `make apply` gates concurrency, follow these:
-
-- One `apply`/`destroy` per module at a time. Different modules can run in parallel (state keys differ; locks are per-module).
-- Run with `-lock-timeout=30s` so a contended/stale lock fails fast instead of hanging.
-- A read-only `plan` also holds the state lock through refresh+plan; two parallel `plan`s serialize.
-- `use_lockfile = true` guards **same-module** Terraform runs only — it does not stop out-of-band destructive changes (`aws-nuke`, console edits).
-- Stale lock after a crash: run `terraform force-unlock <LOCK_ID>` (the ID is in the error) once you're sure no apply is live. `-lock=false` is an emergency bypass only.
-
-## CI checks only, no deploy automation
-
-`.github/workflows/ci.yml` runs `fmt -check -recursive` once, then `init -backend=false` + `validate` per module on push and PR: no secrets, no state, no `plan`, no `apply`. Applies are human-gated via `make apply` (reviewed `plan` first) and the R2 lock serializes same-module runs; a plan→approve→apply pipeline would add a runner and a CI credential surface for zero extra safety. Add orchestration only if a second person/machine needs `apply`, or you need non-interactive reviewed deploys. Rationale: **ADR 0004** (`docs/adr/0004-ci-lint-and-validate-only.md`, why CI stops at `validate`) and **ADR 0002** (`docs/adr/0002-no-cicd-manual-human-gated-applies.md`, escalation ladder).
-
----
-
 ## Quickstart
 
 ```bash
 cd terraform
 
 # Secrets come from Infisical: every Makefile target runs `infisical run` itself; there is no secrets.tfvars flow.
-#   -- If you use k3s, install k3s first.
 make init MOD=k3s    # init providers + bind R2 backend
 make plan MOD=k3s    # preview
 make apply MOD=k3s   # apply
@@ -80,50 +41,6 @@ The repo is operator-reproducible, not fresh-clone-self-contained. Before init/p
 Then `make init MOD=<m>` re-fetches providers. `.terraform.lock.hcl` and local `*.tfstate` are gitignored, so first init on a machine re-resolves against `~>` floors (a minor drift vector).
 
 ---
-
-## Project Layout
-
-```
-terraform/
-├── infra/                   # Terraform root modules
-│   ├── k3s/                 #   state #1 — k3s cluster (the deployment target)
-│   ├── aws/                 #   state #2 — the sesume stack (see infra/aws)
-│   └── cloudflare/          #   state #3 — Cloudflare DNS + zone settings
-├── Makefile                 # Workflow targets (accepts MOD=, ENV=, SECRETS_PATH=)
-├── flake.nix                # Nix dev shell definition
-├── .envrc                   # direnv: auto-nix + git pull + KUBECONFIG
-├── secrets.tfvars.example   # Dummy/empty template for reference only (gitignored live file: secrets.tfvars)
-└── docs/                    # ADRs + incident runbooks
-```
-
-Each module keeps its own `versions.tf`, `provider.tf`, `variables.tf`, `main.tf`, and split resource files (e.g. `infra/aws/{vpc,compute,storage,database,security,monitoring,secrets,outputs}.tf`). `infra/cloudflare/README.md` is the import-first adoption runbook. Full architecture: the `AWS.md` of the sesume repository.
-
----
-
-## Makefile Workflow
-
-Module targets take `MOD=k3s|aws|cloudflare`; the `infra/` prefix and Infisical flow are baked in. Backend-facing targets (`init`, `upgradeinit`, `reconfigure`, `migrate`) pass `backend_config` through `/bin/sh -c` so the `$TF_VAR_R2_*` refs expand (Infisical execs directly and wouldn't expand them). The R2 endpoint is the ambient `AWS_ENDPOINT_URL_S3` present on all targets. Backend/`aws`-provider separation is handled by the provider pin — not an env `unset`. `nuke-list` is account-scoped (ignores `MOD`) and runs from the repo root.
-
-| Target             | Description                                                |
-| ------------------ | ---------------------------------------------------------- |
-| `make init`        | Init providers + bind R2 backend                           |
-| `make upgradeinit` | Upgrade providers / re-bind backend (`-upgrade`)           |
-| `make plan`        | Preview changes                                            |
-| `make apply`       | Apply changes                                              |
-| `make destroy`     | Tear down resources                                        |
-| `make fmt`         | Format `.tf` files                                         |
-| `make validate`    | Validate module                                            |
-| `make migrate`     | One-time push of local state to R2 (`init -migrate-state`) |
-| `make dump`        | Dump `diagramdb` from local k3s postgres → `~/backups/`    |
-| `make nuke-list`   | **Dry-run** aws-nuke sweep — deletes nothing               |
-
-**Variables:** `MOD` (slugs above), `ENV` (default `prod`), `SECRETS_PATH` (default `/consumers/terraform`).
-
-```bash
-make init MOD=k3s && make plan MOD=k3s && make apply MOD=k3s
-make plan MOD=cloudflare && make apply MOD=cloudflare
-make migrate MOD=k3s    # one-time local→R2 state copy
-```
 
 ## K3s Module (Local)
 
@@ -149,44 +66,6 @@ maxterview set below. Back up the DB before `destroy`:
 make dump   # → ~/backups/diagramdb-<timestamp>.sql.gz
 ```
 
-### maxterview secrets (Neon — external DB, no in-cluster Postgres)
-
-`kubernetes_secret.maxterview_secrets` is the one consumer-side contract for the maxterview backend:
-the Deployment injects it with `envFrom`, so **each key must literally equal the env var name**
-(UPPERCASE). The telemetry keys below land in `maxterview-logs` instead (Alloy reads them via
-`valueFrom`, so a bad key there cannot block the backend pod).
-
-| Infisical key (path `/consumers/terraform`)                 | Required | Notes                                                                                                                                                                                         |
-| ----------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TF_VAR_MAXTERVIEW_DATABASE_URL`                            | yes      | Neon **direct** host + `?sslmode=require`, not `-pooler`                                                                                                                                      |
-| `TF_VAR_MAXTERVIEW_CLERK_JWKS_URL`                          | yes      | prod instance JWKS (backend verifies JWTs)                                                                                                                                                    |
-| `TF_VAR_MAXTERVIEW_CLERK_DOMAIN`                            | yes      | e.g. `https://clerk.seekeru.tech`                                                                                                                                                             |
-| `TF_VAR_MAXTERVIEW_LLM_BASE_URL` / `_MODEL`                 | yes      | empty = silent STUB mode (fake interviews); a `validation` block now fails the plan                                                                                                           |
-| `TF_VAR_MAXTERVIEW_LLM_API_KEY`                             | no       | empty is correct for the unauthenticated self-hosted endpoint                                                                                                                                 |
-| `TF_VAR_MAXTERVIEW_LLM_PRO_MODEL`                           | no       | Pro's interview turn on a larger model; empty = every tier runs `_MODEL`                                                                                                                      |
-| `TF_VAR_MAXTERVIEW_BYOK_ENCRYPTION_KEY`                     | yes      | Fernet key for BYOK (`BYOK.md`); rotate = saved keys are orphaned                                                                                                                             |
-| `TF_VAR_MAXTERVIEW_PAYMONGO_SECRET_KEY` / `_WEBHOOK_SECRET` | no       | empty → `/api/billing/*` answers 503 (period mode needs only these two). `_WEBHOOK_SECRET` is the registered endpoint's `whsk_…` — trailing whitespace/newlines break the HMAC                |
-| `TF_VAR_MAXTERVIEW_CLERK_AUDIENCE`                          | no       | empty = accept tokens without an `aud` claim                                                                                                                                                  |
-| `TF_VAR_MAXTERVIEW_CLERK_SECRET_KEY`                        | no       | Clerk Backend API key, read by the backend for the ONE user lookup billing needs (the session token has no `email` claim); empty → checkout 409s "Add an email to your account"               |
-| `TF_VAR_MAXTERVIEW_OWNER_DATABASE_URL`                      | yes      | owner Neon DSN for the migration Job, kept in its own Secret                                                                                                                                  |
-| `TF_VAR_MAXTERVIEW_CLOUDFLARE_ACCOUNT_ID` / `_API_TOKEN`    | no       | voice (M16). Empty = the chat surface disables its voice controls and says why, so an env without Workers AI runs fine with voice off. `_API_TOKEN` needs the `Workers AI - Read` policy only |
-| `TF_VAR_MAXTERVIEW_LOKI_URL` / `_USER` / `_TOKEN`           | yes      | telemetry (Alloy → Grafana Cloud Loki/Tempo/Prometheus). Lands in `maxterview-logs`, read via `valueFrom`, not `envFrom`                                                                      |
-| `TF_VAR_MAXTERVIEW_OTLP_URL`                                | yes      | Grafana Cloud OTLP gateway URL; the Alloy config crashloops if empty                                                                                                                          |
-
-Extra keys added later are picked up with no manifest change (`envFrom`), but a _malformed_ key name is
-all-or-nothing: it blocks the whole pod. Rotate from Infisical + `make apply MOD=k3s`; never `kubectl apply`
-and never `secrets.tfvars`.
-
-Generate the BYOK key once, then paste it into Infisical as `TF_VAR_MAXTERVIEW_BYOK_ENCRYPTION_KEY`:
-
-```bash
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
-
-`BYOK_ENCRYPTION_KEY` is the only key that can decrypt a saved row: lose it and the rows are dead
-ciphertext (each owner re-saves; nothing else breaks). Empty/unset only disables BYOK — the settings
-card renders read-only and writes answer 503 — so rotation is a `make apply MOD=k3s` with no migration.
-
 ## AWS Module (Cloud)
 
 `infra/aws/` (state #2) runs the sesume stack: a VPC with one public and two private subnets, a `t4g.micro` edge instance behind a Cloudflare tunnel (nginx, the tunnel connector, and the NAT for the private subnets), single-AZ encrypted RDS PostgreSQL in the private subnets, an SQS review queue with a dead-letter queue, an ECR repository, Lambda functions for the API, the review worker, migrations and the liveness probe, and a private S3 bucket holding the built frontend. State lives in R2.
@@ -204,36 +83,12 @@ Notable wiring:
 - **One box, one AZ, for now.** It terminates the tunnel and NATs the private subnets, so a reboot is an outage for ingress and for the worker's internet egress. Acceptable at single-owner scale; the path to more users is a second AZ with an ALB and a NAT gateway, or moving the API off the box entirely. Nothing else here assumes one instance.
 - **The edge is configured once, at boot.** `edge.sh.tftpl` renders into EC2 user data, so cloud-init runs it on first boot and never again: no drift correction, no routine patching, and a change only lands by replacing the instance (`user_data_replace_on_change`). Failures are only visible in `/var/log/cloud-init-output.log` on the box, reachable through Session Manager.
 - **The first apply on a cold account cannot create the functions**, because a container image has to exist first. Apply with `TF_VAR_create_functions=false`, push the image, then apply with it back at its default of `true`. `lambda_image_uri` is only read at creation; CD owns the image afterwards.
-- **DB user:** `sesume`.
-
-> Architecture, IAM matrix and what is deliberately absent: `AWS.md` in the sesume repository.
-
-## Cloudflare Module (DNS)
-
-`infra/cloudflare/` (state #3) makes tunnel-facing DNS declarative. Provider `cloudflare ~> 5.0`; state in R2.
-
-**Scope** — the 4 tunnel hostnames on `seekeru.tech` (managed declaratively):
-
-| Record                    | Type  | Target                       | Proxied |
-| ------------------------- | ----- | ---------------------------- | ------- |
-| `seekeru.tech` (apex)     | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
-| `portfolio.seekeru.tech`  | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
-| `diagram.seekeru.tech`    | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
-| `maxterview.seekeru.tech` | CNAME | `7bbbb5d4-…cfargotunnel.com` | yes     |
-
-Imported into state first (adopt, don't overwrite), now tracked by Terraform.
-
-**Left in the dashboard / owned elsewhere:** Clerk SaaS records (`accounts`, `clerk`, `clk._domainkey`, `clkmail`…), and the `sesume.seekeru.tech` record (owned by `infra/aws`, created with its tunnel), and any future statically-addressed record.
-
-**Workflow** — edit the `records` map in `infra/cloudflare/variables.tf`, then plan/apply. To adopt a dashboard-created record, import it before config lands or apply will duplicate it — see `infra/cloudflare/README.md` for the full runbook + `terraform import`.
 
 ## ArgoCD
 
 Installed via `argoproj/argo-helm` in the `argocd` namespace with K8s secrets and a root Application CR.
 
 **Bootstrap:** Terraform applies Helm charts + secrets → applies the root Application via the `kubectl` provider (the **only** direct manifest) → that root App syncs the rest from the GitOps repo. Manifest defaults to `${path.module}/../../../gitops/app.yaml` (resolved at plan time); override via `app_yaml_path` (`infra/k3s/variables.tf`).
-
-**CLI setup:**
 
 ```bash
 PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d) \
@@ -243,56 +98,30 @@ PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.d
 
 ## Databases
 
-**Self-hosted PG 18 StatefulSet** in the `database` namespace for `k3s`. Connection string + API key are injected into the `diagram-secrets` K8s secret consumed by app pods.
-
-**Rotation / incident runbooks:**
-
 - `docs/incident-2026-09-03-postgres-credential-mismatch.md` — a manual `ALTER USER` split the role password from `diagram-secrets` and broke backend auth over TCP (no data loss); includes the safe rotate-via-Terraform procedure.
 - `docs/incident-2026-08-27-r2-backend-credential-conflict.md` — the R2/real-AWS credential collision behind the `TF_VAR_R2_*` namespace split.
 
-## K8s Secrets (created by Terraform)
+## Remote state (R2) & locking
 
-| Secret Name            | Namespace                                          | Purpose                                                                   |
-| ---------------------- | -------------------------------------------------- | ------------------------------------------------------------------------- |
-| `cloudflared-token`    | `default`                                          | Cloudflare Tunnel token for `cloudflared`                                 |
-| `ghcr-login`           | `default` + `portfolio` + `diagram` + `maxterview` | Docker registry creds for GHCR                                            |
-| `diagram-secrets`      | `diagram`                                          | API key + PostgreSQL connection string                                    |
-| `maxterview-secrets`   | `maxterview`                                       | Neon DSN + Clerk/LLM/BYOK/PayMongo/Cloudflare env, injected via `envFrom` |
-| `maxterview-logs`      | `maxterview`                                       | Grafana Cloud Loki/OTLP write creds for Alloy, injected via `valueFrom`   |
-| `repo-secret`          | `argocd`                                           | ArgoCD repo credentials (private repo)                                    |
-| `postgres-credentials` | `database`                                         | PostgreSQL password (k3s only)                                            |
+State lives in a **Cloudflare R2 bucket** (`s3` backend) under a per-module key — no committed local state.
 
-## Nix Dev Shell
+**How the R2 endpoint is delivered (read once):** the s3 backend and the AWS provider both read the ambient `AWS_*` namespace, so they must be kept from colliding:
 
-```bash
-nix develop        # enter the flake shell (pinned via flake.lock)
-direnv allow       # or: auto-load on cd (also pulls + exports KUBECONFIG)
-```
+- R2 creds stay namespaced `TF_VAR_R2_*` (`TF_VAR_R2_BUCKET`, `..._ACCESS_KEY_ID`, `..._SECRET_ACCESS_KEY`); AWS creds stay `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`. Never use a bare `AWS_*` name for R2 creds.
+- The **R2 endpoint** is the ambient `AWS_ENDPOINT_URL_S3`, present on **every** run because the s3 backend needs it to reach R2 (init **and** plan/apply/refresh/destroy). Same var on a fresh box: set it to `https://<account>.r2.cloudflarestorage.com`.
+- Because that var is also read by the AWS provider, `infra/aws/provider.tf` pins `endpoints { s3 = "https://s3.ap-southeast-1.amazonaws.com" }`. That pin — not an env `unset` — keeps real `aws_s3_bucket*` calls in AWS.
 
-| Tool        | Purpose                     |
-| ----------- | --------------------------- |
-| `terraform` | Infrastructure provisioning |
-| `kubectl`   | Kubernetes management       |
-| `argocd`    | ArgoCD CLI                  |
-| `infisical` | Secret management CLI       |
-| `aws-nuke`  | Last-resort account cleanup |
+> **Do not** `unset AWS_ENDPOINT_URL_S3` around plan/apply/refresh/destroy — that starves the backend's own R2 connection. Removing or weakening the `aws` provider pin routes AWS bucket calls to R2 (`access key has length 20, should be 32`). Full rationale + history: **ADR 0001** (`docs/adr/0001-r2-endpoint-ambient-env-provider-pin.md`).
 
-## Security
+### Operating rules
 
-### Folder layout (consumer / source)
+When no CI stage runs and only `make apply` gates concurrency, follow these:
 
-| Path                   | Holds                                                     | Read by                                                        |
-| ---------------------- | --------------------------------------------------------- | -------------------------------------------------------------- |
-| `/consumers/terraform` | `TF_VAR_*` (incl. `TF_VAR_MAXTERVIEW_*`), `AWS_*`         | `make init/plan/apply MOD=…` (`SECRETS_PATH`)                  |
-| `/consumers/ansible`   | cloudflare / github / tailscale / slack creds             | `make -C ~/ansible strap-pi\|tailscale-pi*`                    |
-| `/sources/github`      | `GITHUB_*`                                                | nothing yet — duplicate of the `TF_VAR_*` pair                 |
-| `/sources/cloudflare`  | `CLOUDFLARE_TOKEN`, `R2_ACCOUNT_ID`, `R2_BUCKET`, `AWS_*` | nothing yet (its `AWS_*` are R2 creds — misnamed per ADR 0001) |
-| `/sources/tailscale`   | `TAILSCALE_AUTH_*`                                        | nothing yet                                                    |
-| `/sources/webhooks`    | `ALERTMANAGER_SLACK_WEBHOOK`                              | nothing yet                                                    |
-
-- GitHub PAT / credentials are written straight to K8s secrets — they never sit in Terraform state.
-- R2 backend creds are `TF_VAR_R2_*`, AWS creds `AWS_*`; the endpoint split is handled by the `infra/aws` provider pin (see [Remote state](#remote-state-r2--locking)).
-- Cloudflare token (`cfat_…`, `Zone→DNS→Edit`) is currently an account-wide `terraform-admin` token — broad. Works, but not least-privilege. Tighter posture: mint a zone-scoped `seekeru.tech` token and update Infisical.
+- One `apply`/`destroy` per module at a time. Different modules can run in parallel (state keys differ; locks are per-module).
+- Run with `-lock-timeout=30s` so a contended/stale lock fails fast instead of hanging.
+- A read-only `plan` also holds the state lock through refresh+plan; two parallel `plan`s serialize.
+- `use_lockfile = true` guards **same-module** Terraform runs only — it does not stop out-of-band destructive changes (`aws-nuke`, console edits).
+- Stale lock after a crash: run `terraform force-unlock <LOCK_ID>` (the ID is in the error) once you're sure no apply is live. `-lock=false` is an emergency bypass only.
 
 ## Cleanup
 
