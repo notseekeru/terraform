@@ -5,23 +5,21 @@ SECRETS_PATH ?= /consumers/terraform
 LOCK ?= -lock-timeout=30s
 
 # R2 state-bucket creds are namespaced TF_VAR_R2_* so they never collide with the
-# AWS provider's native AWS_ACCESS_KEY_ID. The R2 s3 backend endpoint is delivered
-# via the ambient AWS_ENDPOINT_URL_S3 env var at init: Terraform (>=1.5) still maps
-# it to the backend's endpoints.s3 as the SDK endpoint source, whereas the now-
-# deprecated `endpoint` -backend-config key is rejected outright. backend_config
-# keeps the flat, still-valid keys; bucket/key expand from infisical-injected
-# TF_VAR_R2_*, and the two secret keys come from TF_VAR_R2_ACCESS_KEY_ID /
-# TF_VAR_R2_SECRET_ACCESS_KEY.
+# AWS provider's native AWS_ACCESS_KEY_ID. Every backend setting reaches init as a
+# -backend-config flag and is stored in the module's .terraform directory, so later
+# runs do not need it again: bucket/key/creds expand from infisical-injected
+# TF_VAR_R2_*, and endpoints.s3 comes from TF_VAR_R2_ENDPOINT (the full
+# https://<account>.r2.cloudflarestorage.com URL). The AWS_ENDPOINT_URL_S3
+# fallback keeps init working until that secret is renamed; plan/apply pass no
+# backend flags, and the provider pin below covers the old var meanwhile.
 backend_config = -backend-config="bucket=$$TF_VAR_R2_BUCKET" \
 	-backend-config="key=terraform/$(MOD)/terraform.tfstate" \
 	-backend-config="region=auto" \
 	-backend-config="access_key=$$TF_VAR_R2_ACCESS_KEY_ID" \
-	-backend-config="secret_key=$$TF_VAR_R2_SECRET_ACCESS_KEY"
-# The s3 backend needs the ambient AWS_ENDPOINT_URL_S3 var present on EVERY terraform
-# run (init AND plan/apply/refresh) to reach R2 for remote state. Do NOT unset it.
-# The ONLY thing that keeps the aws provider off R2 while that var is present is the
-# endpoints.s3 pin to real AWS S3 in infra/aws/provider.tf. Non-AWS modules (k3s,
-# cloudflare) have no such provider and simply run with the var present.
+	-backend-config="secret_key=$$TF_VAR_R2_SECRET_ACCESS_KEY" \
+	-backend-config="endpoints={s3=\"$${TF_VAR_R2_ENDPOINT:-$$AWS_ENDPOINT_URL_S3}\"}"
+# infra/aws/provider.tf pins endpoints.s3 to real AWS S3: that pin, not the
+# environment, is what keeps aws_s3_bucket* resources in AWS.
 
 LOCK_ID ?=
 
@@ -36,9 +34,7 @@ validate:
 # Backend targets exec terraform through a shell so the $$TF_VAR_R2_* refs in
 # backend_config expand from infisical's injected env (infisical itself execs
 # directly and would otherwise pass them through unexpanded as empty strings).
-# plan/apply/refresh/destroy run with the ambient AWS_ENDPOINT_URL_S3 INTACT so the
-# s3 backend can reach R2 for remote state (tried-and-true flat design). The aws
-# provider is kept off R2 purely by the endpoints.s3 pin in infra/aws/provider.tf.
+# plan/apply/refresh/destroy run un-wrapped against the stored backend config.
 init:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
 		'terraform -chdir=infra/$(MOD) init $(backend_config)'

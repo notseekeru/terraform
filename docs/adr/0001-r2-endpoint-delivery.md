@@ -1,7 +1,7 @@
-# ADR 0001 — R2 state-backend endpoint via ambient env var + provider pin
+# ADR 0001 — R2 state-backend endpoint delivery
 
-- **Status:** Accepted (2026-09-07, revised — reverts the earlier per-module `.tfbackend` iteration)
-- **Date:** 2026-09-07
+- **Status:** Accepted (2026-11-19 revision: the endpoint is a backend flag at init, not an environment variable)
+- **Date:** 2026-11-19 (first accepted 2026-09-07)
 - **Supersedes:** the per-module `backend.tfbackend.tpl` + `scripts/render-tfbackend.sh` mechanism
   (which itself superseded the `endpoints.s3` provider override after the R2/AWS collision
   incident, `docs/incident-2026-08-27-r2-backend-credential-conflict.md`)
@@ -15,7 +15,16 @@
 | --- | --- | --- |
 | 2026-08 | Deliver the R2 endpoint via ambient `AWS_ENDPOINT_URL_S3` + an `endpoints.s3` provider pin (the incident-era fix). | **Superseded** by 2026-09-07 |
 | 2026-09-07 | Deliver via per-module `backend.tfbackend.tpl` rendered by `render-tfbackend.sh` (ADR 0001 first version); drop the provider pin. | **Reverted** on 2026-09-08 |
-| **2026-09-08** | **Current:** ambient `AWS_ENDPOINT_URL_S3` present on all runs + `endpoints.s3` pin in `provider.tf` (flat, no tpl/render layer). | **Accepted** |
+| 2026-09-08 | Ambient `AWS_ENDPOINT_URL_S3` present on all runs + `endpoints.s3` pin in `provider.tf`. | **Superseded** on 2026-11-19 |
+| **2026-11-19** | **Current:** `TF_VAR_R2_ENDPOINT` passed as `endpoints.s3` in the init flags, stored with the rest of the backend config. No `AWS_*` endpoint var on any target. | **Accepted** |
+
+**2026-11-19 revision note:** the 2026-09-08 design rested on two claims. The first, that the
+endpoint must be in the environment on every run, was a stale-binding artifact: a live test on
+Terraform 1.16.5 shows `-backend-config=endpoints={s3="..."}` is stored in
+`.terraform/terraform.tfstate` alongside the creds and reused by `plan` with no endpoint in the
+environment. The second, that the address had to come from an ambient var at all, was the
+thing the reverted template solved correctly; it needed a flag, not a template. Delivering it
+as one more init flag keeps the split and drops both the template layer and the shared var.
 
 **Why the per-module iteration was reverted (2026-09-08):** it was over-engineered for a
 single-owner sandbox — one committed template + a render script + `TFBACKEND_OUT(_REL)`
@@ -23,8 +32,8 @@ Makefile plumbing per module just to deliver one non-secret endpoint URL (YAGNI)
 moved structural backend config out of the canonical `versions.tf` `backend "s3"` block into a
 parallel template, splitting configuration across two sources of truth. The real incident fix
 was never the template — it is cred namespacing (`TF_VAR_R2_*`) plus, in the flat design, the
-`provider.tf` `endpoints.s3` pin; a live `make plan MOD=k3s` also proved the endpoint var must
-stay present on every run (an `unset` guard broke the backend's own R2 connection).
+`provider.tf` `endpoints.s3` pin; the `unset` guard that broke `make plan MOD=k3s` at the time
+was read as proof the env var was required, which the 2026-11-19 revision supersedes.
 
 ---
 
@@ -58,40 +67,39 @@ and let `provider.tf` drop its `endpoints.s3` pin. It was live-verified on all f
 ### What the revision keeps / what the live test corrected
 
 The real incident fix was never the template — it was **namespacing R2 creds as
-`TF_VAR_R2_*`** so they cannot shadow the AWS provider creds. A first draft of this
-revision also kept a mutate-time `unset` of the R2 endpoint vars, but a live `make plan
-MOD=k3s` proved that wrong: the s3 backend reads the endpoint from `AWS_ENDPOINT_URL_S3`
-on **every** run (not just `init`), so `unset` made it fall back to `*.s3.auto.amazonaws.com`
-and fail. The endpoint var must stay present on all targets; the provider pin is therefore
-the sole safeguard. The per-module render layer is dropped as unnecessary indirection.
+`TF_VAR_R2_*`** so they cannot shadow the AWS provider creds. The 2026-09-08 revision read a
+failed `make plan MOD=k3s` (with the endpoint var unset) as proof that the endpoint had to be
+in the environment on every run. It was a stale binding: the plan ran before the address was
+stored in that module's backend config, so it fell back to `*.s3.auto.amazonaws.com`. The
+2026-11-19 revision stores the address at init, which removes the need for the var entirely.
 
 ## Decision
 
-**Deliver the R2 endpoint as the ambient `AWS_ENDPOINT_URL_S3`, present on every terraform
-run, keep structural backend settings inline in each `versions.tf`, and pin the AWS
-provider to real S3.** The `aws` provider pin is what stops the shared endpoint var from
-routing AWS bucket resources to R2 — do not try to remove that var from mutate-time envs.
+**Deliver the R2 endpoint as `TF_VAR_R2_ENDPOINT` on the init flags (`endpoints.s3`), keep
+structural backend settings inline in each `versions.tf`, and pin the AWS provider to real
+S3.** Nothing re-reads an endpoint from the environment after init, so the pin is a guard
+against a variable coming back, not the primary defence.
 
 1. Each module's `versions.tf` keeps a real inline `backend "s3"` block (`skip_*` +
-   `use_lockfile`). `bucket`, `key`, `region`, and the two secret creds are supplied as
-   `-backend-config` flags in the Makefile (init-style targets run through `/bin/sh -c` so
-   the `$TF_VAR_R2_*` refs expand from infisical's injected env), expanding from the
-   `TF_VAR_R2_*` secrets.
-2. The R2 endpoint is the ambient `AWS_ENDPOINT_URL_S3` env var, which Terraform maps to
-   the s3 backend's `endpoints.s3`. It is present on all targets (init, plan/apply/
-   refresh/destroy) because the backend needs it to reach R2 each run. No template, no
-   render script, no generated file, and NO `unset` around the endpoint var.
+   `use_lockfile`). `bucket`, `key`, `region`, the two secret creds, and `endpoints.s3` are
+   supplied as `-backend-config` flags in the Makefile (init-style targets run through
+   `/bin/sh -c` so the `$TF_VAR_R2_*` refs expand from infisical's injected env).
+2. The R2 endpoint is `TF_VAR_R2_ENDPOINT`, passed at init as
+   `-backend-config="endpoints={s3=...}"` with bucket/key/region/creds. Init stores it in
+   `.terraform/terraform.tfstate`, so plan/apply/refresh/destroy read it from the working
+   directory and never from the environment. No template, no render script, no generated
+   file, and no `AWS_*` endpoint var on any target.
 3. `infra/aws/provider.tf` pins `endpoints { s3 = "https://s3.<region>.amazonaws.com" }` —
-   this pin is the **sole** thing that keeps real `aws_s3_bucket` / `aws_s3_bucket_policy`
-   calls resolving to AWS while the R2 endpoint var is present.
+   this pin is what keeps real `aws_s3_bucket` / `aws_s3_bucket_policy` calls resolving to
+   AWS if an endpoint setting ever reappears in the environment.
 4. Non-AWS modules (`cloudflare`, `k3s`) carry the same inline backend block and
-   need no provider pin (no AWS provider); they just run with the endpoint var present.
+   need no provider pin (no AWS provider); they need nothing extra either.
 5. R2 creds stay under `TF_VAR_R2_*` and real AWS creds under `AWS_ACCESS_KEY_ID`/
    `AWS_SECRET_ACCESS_KEY`; never move R2 creds to a bare `AWS_*` name.
 
-### Old (per-module template) vs new (flat ambient + pin)
+### Old (per-module template) vs 2026-09-08 design (superseded)
 
-| Step | Per-module `.tfbackend` | Flat ambient + pin (now) |
+| Step | Per-module `.tfbackend` | Flat ambient + pin (2026-09-08, superseded) |
 | --- | --- | --- |
 | Endpoint delivery | committed `*.tpl` rendered at `init` | ambient `AWS_ENDPOINT_URL_S3` on all runs |
 | Structural backend home | per-module template + stubbed `versions.tf` | inline `versions.tf` `backend "s3"` block |
@@ -103,28 +111,26 @@ routing AWS bucket resources to R2 — do not try to remove that var from mutate
 
 ### Positive
 - **Less indirection:** no template files, no render script, no generated-backend path
-  plumbing, no gitignore of `*.tfbackend.generated`. One ambient env var, one provider
-  pin, and one Makefile flag block.
+  plumbing, no gitignore of `*.tfbackend.generated`. One provider pin and one Makefile flag
+  block, and no endpoint variable in the environment at all.
+- The `aws` provider cannot inherit the R2 address, because nothing hands it one.
 - Structural backend config lives in the canonical `versions.tf` `backend` block again.
 - Live-verified on the only populated module (`k3s`): `make plan MOD=k3s` returns **No
   changes** with the flat ambient-endpoint + inline-block config.
 
 ### Negative / trade-offs
-- Reintroduces a **shared ambient `AWS_ENDPOINT_URL_S3`** knob that both the backend and the
-  AWS provider read. Safety for the `aws` module now rests entirely on its `endpoints.s3`
-  pin, not on the var being absent. This is the known residual that pushed the earlier
-  design toward the per-module template; it is accepted as a controlled, documented
-  trade-off for a personal sandbox.
-- A first-cut `unset` guard was attempted and reverted after it broke the backend (the
-  endpoint var is needed each run); the failing invocation is the record of why.
+- The 2026-09-08 revision accepted a shared ambient `AWS_ENDPOINT_URL_S3` knob and left
+  safety resting on the pin. That residual is gone: the address is stored per module and no
+  process environment carries it.
+- A first-cut `unset` guard was attempted during the 2026-09-08 revision and reverted after
+  it broke the backend; that failure is explained by the binding not yet having the address
+  stored (see the revision note above), not by the env var being required.
 
 ### Risks
 - If a future editor removes or weakens the `endpoints.s3` pin in `infra/aws/provider.tf`
   while `AWS_ENDPOINT_URL_S3` is set, the `aws` provider regresses to R2-routing
-  (`access key has length 20, should be 32`). Keep the pin; treat the endpoint var's
-  presence as the default for all runs.
-- Do **not** `unset AWS_ENDPOINT_URL_S3` around plan/apply/refresh/destroy — that starves
-  the backend's own R2 connection.
+  (`access key has length 20, should be 32`). Keep the pin as the guard against that var
+  coming back.
 - If the endpoint/credential split ever gets more complex (multi-operator, an account
   where R2 and AWS genuinely collide again), the documented, correct escalation is
   separating backend+provider into distinct processes, not restoring the per-module
@@ -141,11 +147,12 @@ routing AWS bucket resources to R2 — do not try to remove that var from mutate
 ## Migration / correctness notes (for future agents)
 
 - Reproduce a fresh bind: `make reconfigure MOD=<m>`, then `make plan MOD=<m>` should be
-  **No changes** on configured modules. Backend reads `AWS_ENDPOINT_URL_S3` from Infisical
-  (present on all runs), so the R2 account id lives in that single env var. The `aws`
-  provider must keep its `endpoints.s3` pin; non-AWS modules need none.
-- Do **not** introduce an `unset AWS_ENDPOINT_URL_*` guard around plan/apply/refresh/
-  destroy: the endpoint var is required every run for the backend to reach R2 (see why
-  in **Consequences / Negative**). Rely on the `provider.tf` pin for the `aws` provider.
+  **No changes** on configured modules. The address comes from `TF_VAR_R2_ENDPOINT` at init
+  only, and is stored from then on. The `aws` provider must keep its `endpoints.s3` pin;
+  non-AWS modules need none.
+- Changing the R2 endpoint means another `make reconfigure MOD=<m>`: nothing re-reads the
+  environment afterwards.
+- Leave `AWS_ENDPOINT_URL_S3`, `AWS_ENDPOINT_URL`, and `AWS_S3_ENDPOINT` unset in the
+  Infisical project. They are only read if init falls back to them, which the rename removes.
 - See `docs/incident-2026-08-27-r2-backend-credential-conflict.md` for the original
   collision and why the namespace split exists.

@@ -33,7 +33,7 @@ make apply MOD=k3s   # apply
 The repo is operator-reproducible, not fresh-clone-self-contained. Before init/plan works on a new machine (none of this ships in the repo, by design):
 
 1. **Infisical identity** — copy `~/.config/infisical/` from a working device (or `infisical login`) plus this workspace's `.infisical.json` (path `/consumers/terraform`, env `prod`).
-2. **Secrets populated** — the Infisical project must hold the `TF_VAR_*`/`AWS_*` vars each module's `variables.tf` needs, incl. the R2 set (`TF_VAR_R2_*`) and ambient `AWS_ENDPOINT_URL_S3`.
+2. **Secrets populated** — the Infisical project must hold the `TF_VAR_*`/`AWS_*` vars each module's `variables.tf` needs, incl. the R2 set (`TF_VAR_R2_ENDPOINT`, `TF_VAR_R2_BUCKET`, `TF_VAR_R2_ACCESS_KEY_ID`, `TF_VAR_R2_SECRET_ACCESS_KEY`).
 3. **R2 state bucket live** — creds must still point at the existing `terraform-state` bucket.
 4. **`gitops/` repo checked out at `../gitops/`** — `k3s` reads `app.yaml` via `file()` at apply time.
 5. **ArgoCD/GHCR reachable** — the PAT in Infisical must still be valid for the private `gitops` repo.
@@ -105,13 +105,13 @@ PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.d
 
 State lives in a **Cloudflare R2 bucket** (`s3` backend) under a per-module key — no committed local state.
 
-**How the R2 endpoint is delivered (read once):** the s3 backend and the AWS provider both read the ambient `AWS_*` namespace, so they must be kept from colliding:
+**How the R2 endpoint is delivered (read once):** every backend setting reaches `init` as a `-backend-config` flag and is stored in the module's `.terraform` directory, so plan/apply/refresh/destroy do not read it from the environment:
 
 - R2 creds stay namespaced `TF_VAR_R2_*` (`TF_VAR_R2_BUCKET`, `..._ACCESS_KEY_ID`, `..._SECRET_ACCESS_KEY`); AWS creds stay `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`. Never use a bare `AWS_*` name for R2 creds.
-- The **R2 endpoint** is the ambient `AWS_ENDPOINT_URL_S3`, present on **every** run because the s3 backend needs it to reach R2 (init **and** plan/apply/refresh/destroy). Same var on a fresh box: set it to `https://<account>.r2.cloudflarestorage.com`.
-- Because that var is also read by the AWS provider, `infra/aws/provider.tf` pins `endpoints { s3 = "https://s3.ap-southeast-1.amazonaws.com" }`. That pin — not an env `unset` — keeps real `aws_s3_bucket*` calls in AWS.
+- The **R2 endpoint** is `TF_VAR_R2_ENDPOINT` (`https://<account>.r2.cloudflarestorage.com`), passed as `endpoints.s3` at init. It is not needed on later runs, and no `AWS_ENDPOINT_URL_S3` should exist in the environment.
+- `infra/aws/provider.tf` still pins `endpoints { s3 = "https://s3.ap-southeast-1.amazonaws.com" }` so any endpoint setting that reappears in the environment cannot route `aws_s3_bucket*` calls to R2.
 
-> **Do not** `unset AWS_ENDPOINT_URL_S3` around plan/apply/refresh/destroy — that starves the backend's own R2 connection. Removing or weakening the `aws` provider pin routes AWS bucket calls to R2 (`access key has length 20, should be 32`). Full rationale + history: **ADR 0001** (`docs/adr/0001-r2-endpoint-ambient-env-provider-pin.md`).
+> A removed or weakened `aws` provider pin, plus any `AWS_ENDPOINT_URL_S3` left in the environment, routes AWS bucket calls to R2 (`access key has length 20, should be 32`). Full rationale + history: **ADR 0001** (`docs/adr/0001-r2-endpoint-delivery.md`).
 
 ### Operating rules
 
