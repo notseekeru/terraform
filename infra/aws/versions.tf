@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.11"
 
   # Uses Cloudflare R2 as S3-compatible remote backend. The structural skip_*/
   # use_lockfile settings live in the static backend block below; the R2 bucket/key/
