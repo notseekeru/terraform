@@ -1,4 +1,4 @@
-# ADR 0001 — R2 state-backend endpoint delivery
+# ADR 0001: R2 state-backend endpoint delivery
 
 - **Status:** Accepted (2026-11-19 revision: the endpoint is a backend flag at init, not an environment variable)
 - **Date:** 2026-11-19 (first accepted 2026-09-07)
