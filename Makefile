@@ -4,17 +4,13 @@ SECRETS_PATH ?= /consumers/terraform
 # A contended or stale state lock fails after 30s instead of hanging the run (README operating rules).
 LOCK ?= -lock-timeout=30s
 
-# R2 state-bucket creds are namespaced TF_VAR_R2_* so they never collide with the
-# AWS provider's native AWS_ACCESS_KEY_ID. Every backend setting reaches init as a
-# -backend-config flag and is stored in the module's .terraform directory, so later
-# runs do not need it again: bucket/key/creds expand from infisical-injected
-# TF_VAR_R2_*, and endpoints.s3 comes from TF_VAR_R2_ENDPOINT (the full
-# https://<account>.r2.cloudflarestorage.com URL). plan/apply pass no backend
-# flags, and the provider pin below covers any endpoint var that reappears.
-backend_config = -backend-config="bucket=$$TF_VAR_R2_BUCKET" \
-	-backend-config="key=terraform/$(MOD)/terraform.tfstate" \
-	-backend-config="region=auto" \
-	-backend-config="access_key=$$TF_VAR_R2_ACCESS_KEY_ID" \
+# The backend block in each versions.tf fixes bucket, key, region and the skip_*/
+# use_lockfile settings. Only the values that cannot live in a committed file pass
+# as flags here: the R2 creds (namespaced TF_VAR_R2_* so they never collide with
+# AWS_ACCESS_KEY_ID) and endpoints.s3, built from TF_VAR_R2_ENDPOINT (the full
+# https://<account>.r2.cloudflarestorage.com URL). init stores them in the module's
+# .terraform directory, so plan and apply do not need them again.
+backend_config = -backend-config="access_key=$$TF_VAR_R2_ACCESS_KEY_ID" \
 	-backend-config="secret_key=$$TF_VAR_R2_SECRET_ACCESS_KEY" \
 	-backend-config="endpoints={s3=\"$$TF_VAR_R2_ENDPOINT\"}"
 # infra/aws/provider.tf pins endpoints.s3 to real AWS S3: that pin, not the

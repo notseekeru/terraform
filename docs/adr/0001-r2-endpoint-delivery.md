@@ -80,12 +80,13 @@ structural backend settings inline in each `versions.tf`, and pin the AWS provid
 S3.** Nothing re-reads an endpoint from the environment after init, so the pin is a guard
 against a variable coming back, not the primary defence.
 
-1. Each module's `versions.tf` keeps a real inline `backend "s3"` block (`skip_*` +
-   `use_lockfile`). `bucket`, `key`, `region`, the two secret creds, and `endpoints.s3` are
-   supplied as `-backend-config` flags in the Makefile (init-style targets run through
-   `/bin/sh -c` so the `$TF_VAR_R2_*` refs expand from infisical's injected env).
+1. Each module's `versions.tf` keeps a real inline `backend "s3"` block carrying
+   `bucket`, `key`, `region`, `skip_*` and `use_lockfile`. Only the two secret creds and
+   `endpoints.s3` are supplied as `-backend-config` flags in the Makefile (init-style
+   targets run through `/bin/sh -c` so the `$TF_VAR_R2_*` refs expand from infisical's
+   injected env), because they cannot live in a committed file.
 2. The R2 endpoint is `TF_VAR_R2_ENDPOINT`, passed at init as
-   `-backend-config="endpoints={s3=...}"` with bucket/key/region/creds. Init stores it in
+   `-backend-config="endpoints={s3=...}"`. Init stores it in
    `.terraform/terraform.tfstate`, so plan/apply/refresh/destroy read it from the working
    directory and never from the environment. No template, no render script, no generated
    file, and no `AWS_*` endpoint var on any target.

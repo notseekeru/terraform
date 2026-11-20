@@ -1,12 +1,15 @@
 terraform {
   required_version = ">= 1.11"
 
-  # Uses Cloudflare R2 as S3-compatible remote backend. The structural skip_*/
-  # use_lockfile settings live in the static backend block below; the R2 bucket/key/
-  # region/access_key/secret_key reach it at init as -backend-config in the Makefile
-  # (secrets expand from infisical-injected TF_VAR_R2_*), and endpoints.s3 comes from
-  # TF_VAR_R2_ENDPOINT the same way.
+  # Uses Cloudflare R2 as S3-compatible remote backend. bucket/key/region and the
+  # skip_* flags are fixed here; only the values that cannot live in a committed
+  # file reach init as -backend-config flags from the Makefile: the R2 creds and
+  # endpoints.s3, both from infisical-injected TF_VAR_R2_*.
   backend "s3" {
+    bucket = "terraform-state"
+    key    = "terraform/aws/terraform.tfstate"
+    region = "auto"
+
     skip_region_validation      = true
     skip_credentials_validation = true
     skip_requesting_account_id  = true
