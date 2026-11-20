@@ -56,7 +56,7 @@ the image build.
    never prod's.
 2. **Infisical** — create environment `staging`, folder `/consumers/terraform` **in that env first**
    (a missing folder 404s the write pre-check), then mirror prod's key set as **per-key references** in dot
-   form: `TF_VAR_R2_BUCKET=${prod.consumers.terraform.TF_VAR_R2_BUCKET}`. The dashboard's env-inheritance
+   form: `TF_VAR_R2_ENDPOINT=${prod.consumers.terraform.TF_VAR_R2_ENDPOINT}`. The dashboard's env-inheritance
    toggle does not reach the API/CLI, and `${prod./a/b.KEY}` (slash form) stores verbatim. Mirror the full set
    — later additions to prod do **not** propagate. Local overrides, never references: `DATABASE_URL` (staging
    DSN), `CLERK_DOMAIN`/`CLERK_JWKS_URL` (the Clerk **Development** instance, not `clerk.seekeru.tech`),
