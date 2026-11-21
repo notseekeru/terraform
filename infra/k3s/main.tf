@@ -4,32 +4,6 @@ locals {
   app_yaml_path = var.app_yaml_path != null ? var.app_yaml_path : "${path.module}/../../../gitops/app.yaml"
 }
 
-# --- Nginx Ingress Controller ---
-
-resource "helm_release" "ingress_nginx" {
-  name             = "ingress-nginx"
-  repository       = "https://kubernetes.github.io/ingress-nginx"
-  chart            = "ingress-nginx"
-  namespace        = "ingress-nginx"
-  create_namespace = true
-  timeout          = 600
-
-  set = [
-    {
-      name  = "controller.service.type"
-      value = "ClusterIP"
-    },
-    {
-      name  = "controller.resources.requests.memory"
-      value = "128Mi"
-    },
-    {
-      name  = "controller.resources.requests.cpu"
-      value = "100m"
-    },
-  ]
-}
-
 # --- Traefik Ingress Controller ---
 
 resource "helm_release" "traefik" {
@@ -397,7 +371,6 @@ resource "kubernetes_secret" "argocd_repo_secret" {
 resource "kubectl_manifest" "gitops_app" {
   depends_on = [
     helm_release.argocd,
-    helm_release.ingress_nginx,
     kubernetes_secret.argocd_repo_secret,
     kubernetes_secret.cloudflare_tunnel_token,
     kubernetes_secret.ghcr_credentials,
