@@ -30,6 +30,44 @@ resource "helm_release" "ingress_nginx" {
   ]
 }
 
+# --- Traefik Ingress Controller ---
+
+resource "helm_release" "traefik" {
+  name       = "traefik"
+  repository = "https://traefik.github.io/charts"
+  chart      = "traefik"
+  version    = "42.4.1"
+  namespace  = "kube-system"
+  timeout    = 600
+
+  set = [
+    {
+      name  = "service.spec.type"
+      value = "ClusterIP"
+    },
+    {
+      name  = "api.dashboard"
+      value = "false"
+    },
+    {
+      name  = "ingressClass.isDefaultClass"
+      value = "true"
+    },
+    {
+      name  = "resources.requests.memory"
+      value = "128Mi"
+    },
+    {
+      name  = "resources.requests.cpu"
+      value = "100m"
+    },
+    {
+      name  = "ports.web.forwardedHeaders.trustedIPs[0]"
+      value = "10.42.0.0/16"
+    },
+  ]
+}
+
 # --- ArgoCD Installation ---
 
 resource "helm_release" "argocd" {
