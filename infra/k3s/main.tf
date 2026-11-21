@@ -39,6 +39,14 @@ resource "helm_release" "traefik" {
       name  = "ports.web.forwardedHeaders.trustedIPs[0]"
       value = "10.42.0.0/16"
     },
+    {
+      name  = "providers.kubernetesIngress.publishedService.enabled"
+      value = "false"
+    },
+    {
+      name  = "providers.kubernetesIngress.ingressEndpoint.hostname"
+      value = "traefik.kube-system.svc.cluster.local"
+    },
   ]
 }
 
