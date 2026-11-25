@@ -2,6 +2,7 @@
 
 > Infrastructure-as-Code for my personal cloud environment.
 > **Providers:** Cloudflare (R2 + DNS) / AWS · **Provisioner:** Terraform · **Orchestrator:** ArgoCD
+> **Removed:** the DigitalOcean `droplet` and `doks` modules. Both stay in history: `git log --all -- infra/droplet infra/doks`.
 > **AI usage is encouraged** — ask an agent to explain, audit, or change infra. Every change still ends with a human-reviewed `plan`; AI is a helper, not a dependency.
 
 ---
