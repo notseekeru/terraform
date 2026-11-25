@@ -10,7 +10,7 @@ resource "helm_release" "traefik" {
   name       = "traefik"
   repository = "https://traefik.github.io/charts"
   chart      = "traefik"
-  version    = "42.4.1"
+  version    = "42.4.3"
   namespace  = "kube-system"
   timeout    = 600
 
@@ -58,7 +58,7 @@ resource "helm_release" "argocd" {
   chart            = "argo-cd"
   namespace        = "argocd"
   create_namespace = true
-  version          = "10.10.5"
+  version          = "10.20.0"
   timeout          = 1800
 }
 
