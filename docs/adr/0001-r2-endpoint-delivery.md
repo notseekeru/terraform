@@ -80,6 +80,11 @@ structural backend settings inline in each `versions.tf`, and pin the AWS provid
 S3.** Nothing re-reads an endpoint from the environment after init, so the pin is a guard
 against a variable coming back, not the primary defence.
 
+Terraform opens the state client and the provider in one process for `plan` and `apply`, and
+`init` touches only the state side. That is why the address is delivered at init and nowhere
+else. No command splits the two, so no arrangement of environments, workspaces or root
+modules separates them either.
+
 1. Each module's `versions.tf` keeps a real inline `backend "s3"` block carrying
    `bucket`, `key`, `region`, `skip_*` and `use_lockfile`. Only the two secret creds and
    `endpoints.s3` are supplied as `-backend-config` flags in the Makefile (init-style
@@ -116,8 +121,6 @@ against a variable coming back, not the primary defence.
   block, and no endpoint variable in the environment at all.
 - The `aws` provider cannot inherit the R2 address, because nothing hands it one.
 - Structural backend config lives in the canonical `versions.tf` `backend` block again.
-- Live-verified on the only populated module (`k3s`): `make plan MOD=k3s` returns **No
-  changes** with the flat ambient-endpoint + inline-block config.
 
 ### Negative / trade-offs
 - The 2026-09-08 revision accepted a shared ambient `AWS_ENDPOINT_URL_S3` knob and left
@@ -133,17 +136,20 @@ against a variable coming back, not the primary defence.
   (`access key has length 20, should be 32`). Keep the pin as the guard against that var
   coming back.
 - If the endpoint/credential split ever gets more complex (multi-operator, an account
-  where R2 and AWS genuinely collide again), the documented, correct escalation is
-  separating backend+provider into distinct processes, not restoring the per-module
-  template layer or adding an env `unset`.
+  where R2 and AWS genuinely collide again), separating the two into distinct processes is
+  not available: a single plan opens both in one process. The escalation is moving state to
+  a backend that does not use the AWS SDK at all (`remote`, `pg`, `consul`), which removes
+  the shared namespace instead of arbitrating it.
 
 ## Alternatives considered (and rejected)
 
 1. **Keep the per-module `.tfbackend`/render layer.** Rejected as over-engineered for this
    repo's scale (this revision's whole point).
-2. **Split backend and provider into separate Terraform configurations.** Cleanest in
-   principle, but a much larger architectural change than a single-owner module-per-dir
-   repo needs.
+2. **Split backend and provider into separate Terraform configurations.** Does not change
+   anything: each configuration still opens its own state client and provider in one
+   process, so the shared `AWS_*` namespace comes along. The variant that does work is a
+   state backend outside the AWS SDK, at the cost of a vendor or a database. Too large for
+   a single-owner module-per-dir repo.
 
 ## Migration / correctness notes (for future agents)
 
