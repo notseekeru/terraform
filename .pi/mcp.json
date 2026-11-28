@@ -7,6 +7,11 @@
       },
       "description": "Terraform Registry provider and module docs, plus HCP Terraform workspaces and runs",
       "timeout": 60
+    },
+    "neon": {
+      "url": "https://mcp.neon.tech/mcp",
+      "description": "Neon Postgres projects, branches, SQL, and connection strings",
+      "timeout": 60
     }
   }
 }
