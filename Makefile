@@ -4,15 +4,9 @@ SECRETS_PATH ?= /consumers/terraform
 # A contended or stale state lock fails after 30s instead of hanging the run (README operating rules).
 LOCK ?= -lock-timeout=30s
 
-# The backend block in each versions.tf fixes bucket, key, region and the skip_*/
-# use_lockfile settings. Only the values that cannot live in a committed file pass
-# as flags here: the R2 creds (namespaced TF_VAR_R2_* so they never collide with
-# AWS_ACCESS_KEY_ID) and endpoints.s3, built from TF_VAR_R2_ENDPOINT (the full
-# https://<account>.r2.cloudflarestorage.com URL). init stores them in the module's
-# .terraform directory, so plan and apply do not need them again.
-backend_config = -backend-config="access_key=$$TF_VAR_R2_ACCESS_KEY_ID" \
-	-backend-config="secret_key=$$TF_VAR_R2_SECRET_ACCESS_KEY" \
-	-backend-config="endpoints={s3=\"$$TF_VAR_R2_ENDPOINT\"}"
+# State lives in Postgres (Neon). The pg backend reads PG_CONN_STR from the
+# infisical-injected env, and PG_SCHEMA_NAME keeps one schema per module.
+export PG_SCHEMA_NAME := tf_$(MOD)
 # infra/aws/provider.tf pins endpoints.s3 to real AWS S3: that pin, not the
 # environment, is what keeps aws_s3_bucket* resources in AWS.
 
@@ -26,17 +20,15 @@ fmt:
 validate:
 	terraform -chdir=infra/$(MOD) validate
 
-# Backend targets exec terraform through a shell so the $$TF_VAR_R2_* refs in
-# backend_config expand from infisical's injected env (infisical itself execs
-# directly and would otherwise pass them through unexpanded as empty strings).
-# plan/apply/refresh/destroy run un-wrapped against the stored backend config.
+# Backend targets need no shell: the pg backend reads PG_CONN_STR and
+# PG_SCHEMA_NAME from the environment that infisical injects.
 init:
-	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
-		'terraform -chdir=infra/$(MOD) init $(backend_config)'
+	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
+		terraform -chdir=infra/$(MOD) init
 
 upgradeinit:
-	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
-		'terraform -chdir=infra/$(MOD) init -upgrade $(backend_config)'
+	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
+		terraform -chdir=infra/$(MOD) init -upgrade
 
 plan:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
@@ -75,13 +67,13 @@ unlock:
 		terraform -chdir=infra/$(MOD) force-unlock $(LOCK_ID)
 
 reconfigure:
-	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
-		'terraform -chdir=infra/$(MOD) init -reconfigure $(backend_config)'
+	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
+		terraform -chdir=infra/$(MOD) init -reconfigure
 
-# One-time (per module): push local state to R2. Only needed on first backend setup.
+# One-time (per module): move state into the pg backend.
 migrate:
-	infisical run --path $(SECRETS_PATH) --env $(ENV) -- /bin/sh -c \
-		'terraform -chdir=infra/$(MOD) init -migrate-state $(backend_config)'
+	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
+		terraform -chdir=infra/$(MOD) init -migrate-state
 
 # Dump diagramdb from local k3s postgres to ~/backups
 
