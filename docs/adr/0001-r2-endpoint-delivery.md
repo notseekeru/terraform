@@ -153,10 +153,11 @@ modules separates them either.
 
 ## Migration / correctness notes (for future agents)
 
-- Reproduce a fresh bind: `make reconfigure MOD=<m>`, then `make plan MOD=<m>` should be
-  **No changes** on configured modules. The address comes from `TF_VAR_R2_ENDPOINT` at init
-  only, and is stored from then on. The `aws` provider must keep its `endpoints.s3` pin;
-  non-AWS modules need none.
+- Reproduce a fresh bind: `make reconfigure MOD=<m>`, then `make plan MOD=<m>`. The bind is
+  correct if the plan reaches R2 and reports the same changes it reported before the rebind;
+  a backend or credential error means the bind is wrong. The address comes from
+  `TF_VAR_R2_ENDPOINT` at init only, and is stored from then on. The `aws` provider must keep
+  its `endpoints.s3` pin; non-AWS modules need none.
 - Changing the R2 endpoint means another `make reconfigure MOD=<m>`: nothing re-reads the
   environment afterwards.
 - Leave `AWS_ENDPOINT_URL_S3`, `AWS_ENDPOINT_URL`, and `AWS_S3_ENDPOINT` unset in the
