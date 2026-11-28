@@ -3,7 +3,7 @@
     "terraform": {
       "url": "https://mcp.terraform.io/mcp",
       "headers": {
-        "Authorization": "Bearer ${TF_TOKEN_app_terraform_io}"
+        "Authorization": "!echo Bearer ${TF_TOKEN_app_terraform_io:-$(jq -r '.credentials[\"app.terraform.io\"].token' ~/.terraform.d/credentials.tfrc.json)}"
       },
       "description": "Terraform Registry provider and module docs, plus HCP Terraform workspaces and runs",
       "timeout": 60
