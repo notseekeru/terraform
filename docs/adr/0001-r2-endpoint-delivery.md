@@ -1,6 +1,6 @@
 # ADR 0001: R2 state-backend endpoint delivery
 
-- **Status:** Accepted (2026-11-19 revision: the endpoint is a backend flag at init, not an environment variable)
+- **Status:** Superseded by ADR 0005 (Postgres state backend); kept as the decision record for 2026-08 to 2026-11.
 - **Date:** 2026-11-19 (first accepted 2026-09-07)
 - **Supersedes:** the per-module `backend.tfbackend.tpl` + `scripts/render-tfbackend.sh` mechanism
   (which itself superseded the `endpoints.s3` provider override after the R2/AWS collision

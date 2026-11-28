@@ -34,7 +34,7 @@ make apply MOD=k3s   # apply
 The repo is operator-reproducible, not fresh-clone-self-contained. Before init/plan works on a new machine (none of this ships in the repo, by design):
 
 1. **Infisical identity** — copy `~/.config/infisical/` from a working device (or `infisical login`) plus this workspace's `.infisical.json` (path `/consumers/terraform`, env `prod`).
-2. **Secrets populated**: the Infisical project must hold the `TF_VAR_*`/`AWS_*` vars each module's `variables.tf` needs, incl. the R2 set (`TF_VAR_R2_ENDPOINT`, `TF_VAR_R2_ACCESS_KEY_ID`, `TF_VAR_R2_SECRET_ACCESS_KEY`).
+2. **Secrets populated**: the Infisical project must hold the `TF_VAR_*`/`AWS_*` vars each module's `variables.tf` needs, plus `PG_CONN_STR` for the state backend.
 3. **R2 state bucket live** — creds must still point at the existing `terraform-state` bucket.
 4. **`gitops/` repo checked out at `../gitops/`** — `k3s` reads `app.yaml` via `file()` at apply time.
 5. **ArgoCD/GHCR reachable** — the PAT in Infisical must still be valid for the private `gitops` repo.
@@ -71,7 +71,7 @@ make dump   # → ~/backups/diagramdb-<timestamp>.sql.gz
 
 `infra/aws/` (state #2) runs the sesume stack: a VPC with one public and two private subnets, a `t4g.micro` edge instance behind a Cloudflare tunnel (nginx, the tunnel connector, and the NAT for the private subnets), single-AZ encrypted RDS PostgreSQL in the private subnets, an SQS review queue with a dead-letter queue, an ECR repository, Lambda functions for the API, the review worker, migrations and the liveness probe, and a private S3 bucket holding the built frontend. State lives in R2.
 
-**Credentials** (Infisical): `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `TF_VAR_POSTGRES_PASSWORD`, `TF_VAR_AUTH_SECRET`, `TF_VAR_DATA_KEY`, `TF_VAR_ORIGIN_TOKEN`, `TF_VAR_ALERT_EMAIL`, `TF_VAR_CLOUDFLARE_ACCOUNT_ID`, `TF_VAR_CLOUDFLARE_API_TOKEN`, `TF_VAR_lambda_image_uri`, `TF_VAR_MAXTERVIEW_LLM_BASE_URL`/`_MODEL`/`_API_KEY` (the server-wide reviewer, shared with maxterview), and the `TF_VAR_R2_*` backend pair.
+**Credentials** (Infisical): `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `TF_VAR_POSTGRES_PASSWORD`, `TF_VAR_AUTH_SECRET`, `TF_VAR_DATA_KEY`, `TF_VAR_ORIGIN_TOKEN`, `TF_VAR_ALERT_EMAIL`, `TF_VAR_CLOUDFLARE_ACCOUNT_ID`, `TF_VAR_CLOUDFLARE_API_TOKEN`, `TF_VAR_lambda_image_uri`, `TF_VAR_MAXTERVIEW_LLM_BASE_URL`/`_MODEL`/`_API_KEY` (the server-wide reviewer, shared with maxterview), and `PG_CONN_STR` for the state backend.
 
 Notable wiring:
 
@@ -102,27 +102,28 @@ PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.d
 - `docs/incident-2026-09-03-postgres-credential-mismatch.md` — a manual `ALTER USER` split the role password from `diagram-secrets` and broke backend auth over TCP (no data loss); includes the safe rotate-via-Terraform procedure.
 - `docs/incident-2026-08-27-r2-backend-credential-conflict.md` — the R2/real-AWS credential collision behind the `TF_VAR_R2_*` namespace split.
 
-## Remote state (R2) & locking
+## Remote state (Postgres) & locking
 
-State lives in a **Cloudflare R2 bucket** (`s3` backend) under a per-module key — no committed local state.
+State lives in a **Postgres database (Neon)** through the `pg` backend: one schema per module (`tf_aws`, `tf_cloudflare`, `tf_k3s`) and one `states` row in each. No committed local state.
 
-**How the R2 endpoint is delivered (read once):** the `backend "s3"` block in each module fixes `bucket`, `key`, `region` and the `skip_*`/`use_lockfile` flags. Only the values that cannot live in a committed file arrive at `init` as `-backend-config` flags, and they are stored in the module's `.terraform` directory, so plan/apply/refresh/destroy do not read them from the environment:
+`PG_CONN_STR` and `PG_SCHEMA_NAME` come from the environment. Infisical injects the connection string, and the Makefile exports the schema name from `MOD`. No `-backend-config` flags, no shell wrapper.
 
-- R2 creds stay namespaced `TF_VAR_R2_*` (`..._ACCESS_KEY_ID`, `..._SECRET_ACCESS_KEY`); AWS creds stay `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`. Never use a bare `AWS_*` name for R2 creds.
-- The **R2 endpoint** is `TF_VAR_R2_ENDPOINT` (`https://<account>.r2.cloudflarestorage.com`), passed as `endpoints.s3` at init. It is not needed on later runs, and no `AWS_ENDPOINT_URL_S3` should exist in the environment.
-- `infra/aws/provider.tf` still pins `endpoints { s3 = "https://s3.ap-southeast-1.amazonaws.com" }` so any endpoint setting that reappears in the environment cannot route `aws_s3_bucket*` calls to R2.
+- The connection string must use the **direct** host, not the `-pooler` one. The backend locks with Postgres advisory locks, and the transaction-mode pooler breaks session-scoped locks.
+- Neon requires the endpoint id in the connection options (`options=endpoint%3D<endpoint-id>`). The stored string already carries it; drop it and the first `init` fails with a libpq SNI error.
+- `infra/aws/provider.tf` still pins `endpoints { s3 }` to AWS, so an old `AWS_ENDPOINT_URL_S3` exported in a shell cannot route bucket calls to R2.
+- No `force-unlock`: advisory locks release when the session drops. A lock that outlives a dead run is cleared by terminating its database session.
 
-> A removed or weakened `aws` provider pin, plus any `AWS_ENDPOINT_URL_S3` left in the environment, routes AWS bucket calls to R2 (`access key has length 20, should be 32`). Full rationale + history: **ADR 0001** (`docs/adr/0001-r2-endpoint-delivery.md`).
+> History for why state is not in an S3 bucket: **ADR 0001** (`docs/adr/0001-r2-endpoint-delivery.md`) and **ADR 0005** (`docs/adr/0005-pg-state-backend.md`).
 
 ### Operating rules
 
 When no CI stage runs and only `make apply` gates concurrency, follow these:
 
-- One `apply`/`destroy` per module at a time. Different modules can run in parallel (state keys differ; locks are per-module).
+- One `apply`/`destroy` per module at a time. Different modules can run in parallel (separate schemas, separate locks).
 - Run with `-lock-timeout=30s` so a contended/stale lock fails fast instead of hanging.
 - A read-only `plan` also holds the state lock through refresh+plan; two parallel `plan`s serialize.
-- `use_lockfile = true` guards **same-module** Terraform runs only — it does not stop out-of-band destructive changes (`aws-nuke`, console edits).
-- Stale lock after a crash: run `terraform force-unlock <LOCK_ID>` (the ID is in the error) once you're sure no apply is live. `-lock=false` is an emergency bypass only.
+- Postgres advisory locks guard **same-module** Terraform runs only; they do not stop out-of-band changes (`aws-nuke`, console edits).
+- Stale lock after a crash: terminate that database session, or use `-lock=false` as an emergency bypass. `force-unlock` is not supported by the `pg` backend.
 
 ## Cleanup
 
