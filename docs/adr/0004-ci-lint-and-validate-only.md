@@ -14,7 +14,7 @@ every push without touching the surfaces ADR 0001 removed. `validate` catches ex
 class that is otherwise caught by a person reading a diff: syntax, type and reference errors, bad
 variable/attribute names, malformed HCL, provider schema drift.
 
-The expensive half is `plan`. A real plan needs the R2 backend (state) plus every `TF_VAR_*` and
+The expensive half is `plan`. A real plan needs the state backend plus every `TF_VAR_*` and
 every provider token for that module, i.e. the whole Infisical `/consumers/terraform` consumer
 mirrored into a CI secret store, under a machine identity. A plan without those credentials is not
 a cheaper plan, it is a *wrong* plan: it diffs against empty state and its output cannot be trusted
@@ -39,7 +39,7 @@ CI runs on push and PR: `terraform fmt -check -recursive infra` once, then per m
 Explicitly out of scope in CI:
 
 - **`apply`.** Stays human-gated via `make apply MOD=…` (ADR 0002 unchanged).
-- **`plan`.** Stays local via `make plan MOD=…`, where Infisical supplies real values and the R2
+- **`plan`.** Stays local via `make plan MOD=…`, where Infisical supplies real values and the state
   backend supplies real state.
 - **Any secret, any provider credential, any ambient cloud identity.** The workflow is credential-free,
   which is also why it is safe to run on forked PRs.
@@ -64,7 +64,7 @@ deploys, or a required audit trail. Adding a `plan` job means first solving cred
 ### Negative / trade-offs
 
 - `validate` proves nothing about reality: not permissions, quotas, name collisions, existing
-  resources, or the R2 backend config (skipped by `-backend=false`). It is a syntax gate, not a
+  resources, or the backend config (skipped by `-backend=false`). It is a syntax gate, not a
   safety gate, and must not be read as approval to skip `make plan`.
 - CI cannot catch provider-side breakage (`fmt`/`validate` pass on a config that will 403 on apply).
 - A fresh provider download per job: slower than a cached lock, and it will not notice a resolution
@@ -84,7 +84,7 @@ deploys, or a required audit trail. Adding a `plan` job means first solving cred
 1. **No CI at all (ADR 0002 as written).** Rejected: the credential-free subset is free and its absence
    only buys the operator a slower feedback loop.
 2. **CI with a credentialed `plan` job.** Rejected for now: requires the full secret set plus a machine
-   identity for R2 state, re-adding an automation credential to reason about. It would also hold the
+   identity for the state backend, re-adding an automation credential to reason about. It would also hold the
    per-module state lock for every run, and its approval would be stale by the time the operator
    applies. Reconsider only on an ADR 0002 trigger, with read-only scoped credentials.
 3. **CI `plan` with `-backend=false`.** Rejected: plans against empty state and reports a full create

@@ -2,15 +2,15 @@
 
 - **Status:** Accepted (single-owner sandbox)
 - **Date:** 2026-09-07 (decision predates; formalized here)
-- **Related:** ADR 0001, ADR 0004 (amends §Decision: credential-free `fmt`/`validate` CI is allowed, `plan`/`apply` stay manual), `Makefile`, `README.md` §Locking, R2 S3-native locking
+- **Related:** ADR 0001, ADR 0005, ADR 0004 (amends §Decision: credential-free `fmt`/`validate` CI is allowed, `plan`/`apply` stay manual), `Makefile`, `README.md` §Locking, Postgres advisory locking
 
 ---
 
 ## Context
 
 Terraform state and resources are managed from a lone operator's machine via `make`
-targets. State lives in Cloudflare R2 with **S3-native `use_lockfile` locking** per module
-(ADR 0001 / README §Locking), which already prevents two concurrent applies of the same
+targets. State lives in Postgres (Neon) with **Postgres advisory locks** per module
+(ADR 0005 / README §Locking), which already prevents two concurrent applies of the same
 module from corrupting state. A full plan→approve→apply CI/CD pipeline is possible but
 expensive (and, per ADR 0001, an extra credential/endpoint surface).
 
@@ -20,7 +20,7 @@ Key facts:
 - **Applies are already human-gated.** `make apply MOD=<m>` prompts (no auto-approve),
   and the workflow requires a human-reviewed `plan` before `apply`.
 - **Locking already handles the concurrency risk.** Two applies of the *same* module
-  serialize via the R2 lockfile; different modules run fine in parallel.
+  serialize via the state backend's advisory lock; different modules run fine in parallel.
 - Secrets live in Infisical and are injected by `infisical run`; no CI secret store exists.
 
 ## Decision
@@ -46,7 +46,7 @@ When that happens, the cheap escalation ladder, in order:
 
 ### Positive
 - No runner to maintain, no CI credential surface, no deploy latency.
-- The R2 `use_lockfile` guard suffices for the actual concurrency risk (same-module
+- The Postgres advisory-lock guard suffices for the actual concurrency risk (same-module
   applies serialize).
 - Every change is intentional and reviewed by a human (`plan` before `apply`), which is
   the strongest practical safety for a single-owner repo.

@@ -2,15 +2,13 @@
 
 > Root-cause note for the `InvalidAccessKeyId` / "value cannot be empty" failures
 > on `init`/`plan`. Config-change bug, no deployment or data impact. **This is a
-> historical record.** The standing pattern has since evolved: the R2
-> backend creds are namespaced `TF_VAR_R2_*` so they never shadow the AWS provider's
-> native `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, and the R2 endpoint is
-> `TF_VAR_R2_ENDPOINT`, supplied at `init` as the backend's `endpoints.s3` and stored
-> with the rest of the backend config. No `AWS_*` endpoint variable is needed on any
-> run, so nothing hands the R2 address to the AWS provider; `provider.tf` still pins
-> `endpoints.s3` to real AWS S3 as the guard. The R2 creds must never be placed under
-> a bare `AWS_*` name. Details below describe _what was true at incident time_ and why
-> the namespace split matters.
+> historical record.** The standing pattern has since evolved twice: the R2 backend creds
+> were namespaced `TF_VAR_R2_*` so they never shadowed the AWS provider's native
+> `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, and state now lives in Postgres (Neon)
+> through the `pg` backend, which removes the AWS endpoint namespace from the state path
+> entirely (ADR 0005). The lesson stands: never place R2 creds under a bare `AWS_*` name.
+> Details below describe _what was true at incident time_ and why the namespace split
+> mattered.
 
 ## Summary
 

@@ -1,7 +1,7 @@
 # Terraform — Personal Cloud Infrastructure
 
 > Infrastructure-as-Code for my personal cloud environment.
-> **Providers:** Cloudflare (R2 + DNS) / AWS · **Provisioner:** Terraform · **Orchestrator:** ArgoCD
+> **Providers:** Cloudflare (DNS) / AWS · **Provisioner:** Terraform · **Orchestrator:** ArgoCD
 > **Removed:** the DigitalOcean `droplet` and `doks` modules. Both stay in history: `git log --all -- infra/droplet infra/doks`.
 > **AI usage is encouraged** — ask an agent to explain, audit, or change infra. Every change still ends with a human-reviewed `plan`; AI is a helper, not a dependency.
 
@@ -11,7 +11,7 @@
 
 | Requirement          | Details                                                                                    |
 | -------------------- | ------------------------------------------------------------------------------------------ |
-| **Terraform**        | `>= 1.0` ([install](https://developer.hashicorp.com/terraform/install))                    |
+| **Terraform**        | `>= 1.11` ([install](https://developer.hashicorp.com/terraform/install))                   |
 | **Cloudflare token** | API token `Zone → DNS → Edit` (`TF_VAR_CLOUDFLARE_API_TOKEN`) — for `cloudflare` and `aws` |
 | **k3s**              | Existing k3s cluster with `~/.kube/config` — see [K3s Module](#k3s-module-local)           |
 | **Nix / direnv**     | Optional: `nix develop` shell; `direnv` auto-loads it, pulls, exports `KUBECONFIG`         |
@@ -24,7 +24,7 @@
 cd terraform
 
 # Secrets come from Infisical: every Makefile target runs `infisical run` itself; there is no secrets.tfvars flow.
-make init MOD=k3s    # init providers + bind R2 backend
+make init MOD=k3s    # init providers + bind the state backend
 make plan MOD=k3s    # preview
 make apply MOD=k3s   # apply
 ```
@@ -35,11 +35,11 @@ The repo is operator-reproducible, not fresh-clone-self-contained. Before init/p
 
 1. **Infisical identity** — copy `~/.config/infisical/` from a working device (or `infisical login`) plus this workspace's `.infisical.json` (path `/consumers/terraform`, env `prod`).
 2. **Secrets populated**: the Infisical project must hold the `TF_VAR_*`/`AWS_*` vars each module's `variables.tf` needs, plus `PG_CONN_STR` for the state backend.
-3. **R2 state bucket live** — creds must still point at the existing `terraform-state` bucket.
+3. **State database reachable**: `PG_CONN_STR` must point at the live Neon database, or `make init` fails at the backend.
 4. **`gitops/` repo checked out at `../gitops/`** — `k3s` reads `app.yaml` via `file()` at apply time.
 5. **ArgoCD/GHCR reachable** — the PAT in Infisical must still be valid for the private `gitops` repo.
 
-Then `make init MOD=<m>` re-fetches providers. `.terraform.lock.hcl` and local `*.tfstate` are gitignored, so first init on a machine re-resolves against `~>` floors (a minor drift vector).
+Then `make init MOD=<m>` re-fetches providers.
 
 ---
 
@@ -69,7 +69,7 @@ make dump   # → ~/backups/diagramdb-<timestamp>.sql.gz
 
 ## AWS Module (Cloud)
 
-`infra/aws/` (state #2) runs the sesume stack: a VPC with one public and two private subnets, a `t4g.micro` edge instance behind a Cloudflare tunnel (nginx, the tunnel connector, and the NAT for the private subnets), single-AZ encrypted RDS PostgreSQL in the private subnets, an SQS review queue with a dead-letter queue, an ECR repository, Lambda functions for the API, the review worker, migrations and the liveness probe, and a private S3 bucket holding the built frontend. State lives in R2.
+`infra/aws/` (state #2) runs the sesume stack: a VPC with one public and two private subnets, a `t4g.micro` edge instance behind a Cloudflare tunnel (nginx, the tunnel connector, and the NAT for the private subnets), single-AZ encrypted RDS PostgreSQL in the private subnets, an SQS review queue with a dead-letter queue, an ECR repository, Lambda functions for the API, the review worker, migrations and the liveness probe, and a private S3 bucket holding the built frontend. State lives in Postgres (Neon).
 
 **Credentials** (Infisical): `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `TF_VAR_POSTGRES_PASSWORD`, `TF_VAR_AUTH_SECRET`, `TF_VAR_DATA_KEY`, `TF_VAR_ORIGIN_TOKEN`, `TF_VAR_ALERT_EMAIL`, `TF_VAR_CLOUDFLARE_ACCOUNT_ID`, `TF_VAR_CLOUDFLARE_API_TOKEN`, `TF_VAR_lambda_image_uri`, `TF_VAR_MAXTERVIEW_LLM_BASE_URL`/`_MODEL`/`_API_KEY` (the server-wide reviewer, shared with maxterview), and `PG_CONN_STR` for the state backend.
 
@@ -136,7 +136,7 @@ Each module destroys independently. The AWS module refuses to destroy while `del
 
 ### Cost control (do NOT skip)
 
-Teardown the AWS module with `make destroy MOD=aws` — **not** aws-nuke. `destroy` removes managed resources in dependency order and empties R2 state so a stale `plan` can't recreate them. Cost alarms (`sesume-zero-spend` at plan, `sesume-credit-cap` at 95% actual / 90% forecast) email via the `sesume-alerts` SNS topic — trust them as the tripwire for normal exits.
+Teardown the AWS module with `make destroy MOD=aws`, **not** aws-nuke. `destroy` removes managed resources in dependency order and empties remote state so a stale `plan` can't recreate them. Cost alarms (`sesume-zero-spend` at plan, `sesume-credit-cap` at 95% actual / 90% forecast) email via the `sesume-alerts` SNS topic; trust them as the tripwire for normal exits.
 
 ### aws-nuke — last-resort orphan cleanup (NOT routine teardown)
 

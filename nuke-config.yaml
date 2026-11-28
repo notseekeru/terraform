@@ -4,7 +4,7 @@
 # tag-based opt-out, so it is NOT the tool for sparing Terraform-managed infra.
 #
 # Reset flow:
-#   1. make destroy        terraform destroy the managed stack (R2 state intact)
+#   1. make destroy        terraform destroy the managed stack (state intact)
 #   2. make nuke-list      dry-run against the same creds; review what would die
 #   3. explicit full reset (below) — never a bare `make nuke`
 #

@@ -49,7 +49,7 @@ destroy:
 # credential/encryption chain that reprovisions the stack (see nuke-config.yaml,
 # resource-types.excludes). Still: confirm `make destroy` first, because anything
 # Terraform built that is NOT in the exclude set WILL be deleted out-of-band,
-# desyncing remote state in R2.
+# desyncing remote state.
 NUKE_CFG ?= nuke-config.yaml
 
 nuke-list:

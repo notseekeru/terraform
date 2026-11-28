@@ -16,7 +16,8 @@
 | 2026-08 | Deliver the R2 endpoint via ambient `AWS_ENDPOINT_URL_S3` + an `endpoints.s3` provider pin (the incident-era fix). | **Superseded** by 2026-09-07 |
 | 2026-09-07 | Deliver via per-module `backend.tfbackend.tpl` rendered by `render-tfbackend.sh` (ADR 0001 first version); drop the provider pin. | **Reverted** on 2026-09-08 |
 | 2026-09-08 | Ambient `AWS_ENDPOINT_URL_S3` present on all runs + `endpoints.s3` pin in `provider.tf`. | **Superseded** on 2026-11-19 |
-| **2026-11-19** | **Current:** `TF_VAR_R2_ENDPOINT` passed as `endpoints.s3` in the init flags, stored with the rest of the backend config. No `AWS_*` endpoint var on any target. | **Accepted** |
+| **2026-11-19** | Third design: `TF_VAR_R2_ENDPOINT` passed as `endpoints.s3` in the init flags, stored with the rest of the backend config. No `AWS_*` endpoint var on any target. | **Superseded** on 2026-11-28 |
+| 2026-11-28 | State moved to Postgres (Neon) through the `pg` backend. The s3 backend and this ADR are retired; see ADR 0005. | **Superseded** |
 
 **2026-11-19 revision note:** the 2026-09-08 design rested on two claims. The first, that the
 endpoint must be in the environment on every run, was a stale-binding artifact: a live test on

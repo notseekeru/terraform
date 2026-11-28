@@ -9,7 +9,7 @@
 ## Context
 
 Staging was a full second environment: its own Neon project, Infisical `staging` environment, Terraform
-root module + R2 state, k8s namespace + secrets, ArgoCD Application, DNS hostname, and a second frontend
+root module + its own state schema, k8s namespace + secrets, ArgoCD Application, DNS hostname, and a second frontend
 image build (the SPA inlines its Clerk publishable key at build time, so a different Clerk instance needs a
 different image). It existed to rehearse migrations and to host load tests — **not** as a release gate:
 ADR-adjacent decision D13 ships every green `main` straight to prod, so nothing was ever promoted from
@@ -42,7 +42,7 @@ path below, and only when a real trigger exists:
 | GitOps    | `apps-of-apps/maxterview-staging.yaml`, `apps/maxterview/overlays/staging/`                                                                                                                                               |
 | App repo  | CD matrix entry `frontend-staging` (`staging-<sha>` tag), the second overlay bump in `update-gitops-repo`, `frontend/.env.staging`, Dockerfile `ARG VITE_MODE`                                                            |
 
-An empty `terraform/k3s-staging/terraform.tfstate` may survive in R2 — harmless, and re-bindable if staging
+An empty staging state row may survive in the state database. It is harmless, and re-bindable if staging
 comes back (`make init MOD=k3s-staging` overwrites nothing, it reads).
 
 ## How to rebuild it
