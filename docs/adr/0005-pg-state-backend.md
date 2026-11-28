@@ -29,6 +29,15 @@ State lives in Postgres (Neon) through the `pg` backend, one schema per module.
    `options=endpoint%3D<endpoint-id>`, which Neon requires for clients that lack SNI.
 4. Locking is Postgres advisory locks. `force-unlock` is not supported.
 
+## Alternatives considered
+
+| Rejected | Reason |
+| --- | --- |
+| AWS S3, same account | Bills once the free allowance ends, which breaks a zero-spend budget, and puts state inside the account `aws-nuke` sweeps |
+| HCP Terraform | Free organization creation is refused with `Free tier organizations created by user limit reached`, and that counter does not reset on deletion |
+| Self-hosted Postgres or Consul | Runs a service to hold a few kilobytes |
+| R2 through the `s3` backend | Worked. Kept three backend flags, a shell wrapper to expand them, and a shared AWS SDK namespace that needed a provider pin |
+
 ## Consequences
 
 - Removes three backend flags, the shell wrapper, and the R2 credentials from the
@@ -36,7 +45,8 @@ State lives in Postgres (Neon) through the `pg` backend, one schema per module.
 - Durability is weaker than object versioning. State is a row covered by Neon's
   point-in-time window, not an immutable object per revision. Accepted at this scale.
 - State and the app now share one vendor, so a Neon outage blocks the fix as well as
-  the app. The alternative, TFC, is blocked and the S3 options either bill or collide.
+  the app. The alternatives are worse: S3 state bills after the free allowance or keeps the
+  collision, and TFC is blocked by the free-organization limit.
 - Advisory locks are session-scoped. A hung run holds its lock until the connection
   drops, and there is no CLI unlock; terminating the session is the remedy.
 
