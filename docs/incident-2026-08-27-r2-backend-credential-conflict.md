@@ -9,7 +9,7 @@
 > with the rest of the backend config. No `AWS_*` endpoint variable is needed on any
 > run, so nothing hands the R2 address to the AWS provider; `provider.tf` still pins
 > `endpoints.s3` to real AWS S3 as the guard. The R2 creds must never be placed under
-> a bare `AWS_*` name. Details below describe *what was true at incident time* and why
+> a bare `AWS_*` name. Details below describe _what was true at incident time_ and why
 > the namespace split matters.
 
 ## Summary
@@ -32,9 +32,9 @@ two further setup mistakes. No config was corrupted; no state was lost.
 
 Infisical held **two** credential pairs:
 
-| Secret | Held | Used by |
-|---|---|---|
-| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | **R2** keys | s3 backend AND aws provider |
+| Secret                                                      | Held         | Used by                     |
+| ----------------------------------------------------------- | ------------ | --------------------------- |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`               | **R2** keys  | s3 backend AND aws provider |
 | `TF_VAR_AWS_ACCESS_KEY_ID` / `TF_VAR_AWS_SECRET_ACCESS_KEY` | **real AWS** | (shadowed, read by nothing) |
 
 Both the `s3` backend and the `aws` provider read the **same** native
@@ -74,15 +74,15 @@ Applied fix — split the namespaces so every credential is unambiguous:
 
 1. **Rename Infisical secrets**
 
-   | Secret | Now holds | Target |
-   |---|---|---|
-   | `AWS_ACCESS_KEY_ID` | real AWS key | aws provider |
-   | `AWS_SECRET_ACCESS_KEY` | real AWS secret | aws provider |
-   | `TF_VAR_R2_ACCESS_KEY_ID` | R2 key | s3 backend |
-   | `TF_VAR_R2_SECRET_ACCESS_KEY` | R2 secret | s3 backend |
-   | `TF_VAR_R2_ACCOUNT_ID` | R2 account id | endpoint |
-   | `TF_VAR_R2_BUCKET` | `terraform-state` | bucket |
-   | `AWS_ENDPOINT_URL_S3` | `https://<acct>.r2.cloudflarestorage.com` | endpoint |
+   | Secret                        | Now holds                                 | Target       |
+   | ----------------------------- | ----------------------------------------- | ------------ |
+   | `AWS_ACCESS_KEY_ID`           | real AWS key                              | aws provider |
+   | `AWS_SECRET_ACCESS_KEY`       | real AWS secret                           | aws provider |
+   | `TF_VAR_R2_ACCESS_KEY_ID`     | R2 key                                    | s3 backend   |
+   | `TF_VAR_R2_SECRET_ACCESS_KEY` | R2 secret                                 | s3 backend   |
+   | `TF_VAR_R2_ACCOUNT_ID`        | R2 account id                             | endpoint     |
+   | `TF_VAR_R2_BUCKET`            | `terraform-state`                         | bucket       |
+   | `AWS_ENDPOINT_URL_S3`         | `https://<acct>.r2.cloudflarestorage.com` | endpoint     |
 
 2. **Makefile** (`Makefile`)
    - `backend_config` passes flat, non-deprecated keys only:
@@ -120,12 +120,6 @@ Ordered guardrails to avoid regression:
 3. **Use modern endpoint config.** Use `AWS_ENDPOINT_URL_S3` (or `endpoints.s3`
    in HCL), not `endpoint`.
 4. **Related commits**: `dd38d69`, `1dc43da`.
-
-## Security note
-
-The credential rename was performed by transcribing values previously dumped by
-the CLI. **Rotate** `AWS_*`, `TF_VAR_R2_*`, and any Infisical token whose value
-went through this process.
 
 ## Labels
 
