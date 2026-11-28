@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "terraform": {
+      "url": "https://mcp.terraform.io/mcp",
+      "headers": {
+        "Authorization": "Bearer ${TFE_TOKEN}"
+      },
+      "description": "Terraform Registry provider and module docs, plus HCP Terraform workspaces and runs",
+      "timeout": 60
+    }
+  }
+}
