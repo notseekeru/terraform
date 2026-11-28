@@ -10,9 +10,7 @@ export PG_SCHEMA_NAME := tf_$(MOD)
 # infra/aws/provider.tf pins endpoints.s3 to real AWS S3: that pin, not the
 # environment, is what keeps aws_s3_bucket* resources in AWS.
 
-LOCK_ID ?=
-
-.PHONY: fmt validate init upgradeinit reconfigure plan apply destroy migrate dump secrets verify-db-auth nuke-list unlock
+.PHONY: fmt validate init upgradeinit reconfigure plan apply destroy migrate dump secrets verify-db-auth nuke-list
 
 fmt:
 	terraform -chdir=infra/$(MOD) fmt
@@ -59,12 +57,9 @@ nuke-list:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
 		aws-nuke -c $(NUKE_CFG)
 
-# Force-unlock drops the state lock unconditionally. Only for a dead run: a live
-# apply keeps writing while the lock is gone, which corrupts remote state.
-unlock:
-	@test -n "$(LOCK_ID)" || { echo 'LOCK_ID required (from the lock error)'; exit 1; }
-	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
-		terraform -chdir=infra/$(MOD) force-unlock $(LOCK_ID)
+# Force-unlock is not supported by the pg backend: advisory locks clear when the
+# owning session drops, so a stuck lock is cleared by terminating that session in
+# Postgres, not from here.
 
 reconfigure:
 	infisical run --path $(SECRETS_PATH) --env $(ENV) -- \
